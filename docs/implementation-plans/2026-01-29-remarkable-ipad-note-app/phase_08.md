@@ -59,13 +59,19 @@ case .startNetworkMonitoring:
 
         monitor.pathUpdateHandler = { path in
             let isOnline = path.status == .satisfied
-            await send(.networkStatusChanged(isOnline))
+            Task {
+                await send(.networkStatusChanged(isOnline))
+            }
         }
 
         monitor.start(queue: queue)
 
-        // Keep monitor alive
-        for await _ in AsyncStream<Never>.never {}
+        // Keep monitor alive with proper cancellation handling
+        await withTaskCancellationHandler {
+            await Task.never()
+        } onCancel: {
+            monitor.cancel()
+        }
     }
 
 case .networkStatusChanged(let isOnline):

@@ -180,6 +180,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 - Create: `NoteApp/Models/` (directory)
 - Create: `NoteApp/Repositories/` (directory)
 - Create: `NoteApp/Services/` (directory)
+- Create: `NoteApp/Dependencies/` (directory)
 
 **Step 1: Create directories in Xcode**
 
@@ -189,8 +190,9 @@ In Xcode:
 3. Right-click `NoteApp` group → New Group → `Models`
 4. Right-click `NoteApp` group → New Group → `Repositories`
 5. Right-click `NoteApp` group → New Group → `Services`
+6. Right-click `NoteApp` group → New Group → `Dependencies`
 
-Expected result: Five new folders appear in Xcode project navigator
+Expected result: Six new folders appear in Xcode project navigator
 
 **Step 2: Verify directory structure**
 
@@ -202,6 +204,7 @@ ls -la NoteApp/
 Expected output includes:
 ```
 App/
+Dependencies/
 Features/
 Models/
 Repositories/
@@ -211,10 +214,11 @@ Services/
 **Step 3: Commit directory structure**
 
 ```bash
-git add NoteApp/App/ NoteApp/Features/ NoteApp/Models/ NoteApp/Repositories/ NoteApp/Services/
+git add NoteApp/App/ NoteApp/Dependencies/ NoteApp/Features/ NoteApp/Models/ NoteApp/Repositories/ NoteApp/Services/
 git commit -m "feat: create initial directory structure
 
 - Add App/ for root TCA feature
+- Add Dependencies/ for TCA dependency registrations
 - Add Features/ for domain features (Library, NoteEditor, etc.)
 - Add Models/ for SwiftData models (Phase 2+)
 - Add Repositories/ for data access abstractions (Phase 2+)

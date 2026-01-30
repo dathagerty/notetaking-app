@@ -107,6 +107,13 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `NoteApp/Features/NoteEditor/NoteEditorFeature.swift`
 
+Add tagRepository dependency at reducer level (after existing dependencies):
+```swift
+@Dependency(\.noteRepository) var noteRepo
+@Dependency(\.tagRepository) var tagRepo  // Add this line
+@Dependency(\.continuousClock) var clock
+```
+
 Add to State:
 ```swift
 var detectedTags: Set<String> = []
@@ -123,19 +130,14 @@ case .saveDrawing:
 
     return .run { send in
         do {
-            // Serialize drawing
-            let data = try NSKeyedArchiver.archivedData(
-                withRootObject: drawing,
-                requiringSecureCoding: true
-            )
+            // Use PKDrawing's native serialization
+            let data = drawing.dataRepresentation()
 
             // Extract hashtags asynchronously
             let extractor = HashtagExtractor()
             let detectedTags = try await extractor.extractHashtags(from: drawing)
 
-            // Create/fetch tags and attach to note
-            @Dependency(\.tagRepository) var tagRepo
-
+            // Create/fetch tags and attach to note (use tagRepo from reducer scope)
             var tags: [Tag] = []
             for tagName in detectedTags {
                 let tag = try await tagRepo.fetchOrCreateTag(name: tagName)
@@ -397,6 +399,68 @@ git commit -m "feat: add search bar and tag filter UI
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 ```
 <!-- END_TASK_4 -->
+
+<!-- START_TASK_5 -->
+### Task 5: Add Tag Badge Overlay to Note Editor
+
+**Files:**
+- Modify: `NoteApp/Features/NoteEditor/NoteEditorView.swift`
+
+Add tag badge overlay after the navigation overlay (inside the ZStack or overlay):
+
+```swift
+// Add after the existing navigation overlay VStack:
+if !store.detectedTags.isEmpty {
+    VStack {
+        Spacer()
+
+        HStack {
+            Spacer()
+
+            TagBadgeOverlay(tags: Array(store.detectedTags))
+                .padding()
+        }
+    }
+    .transition(.move(edge: .trailing).combined(with: .opacity))
+}
+```
+
+Add TagBadgeOverlay component at the bottom of the file:
+
+```swift
+// Tag badge overlay showing detected hashtags
+struct TagBadgeOverlay: View {
+    let tags: [String]
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            ForEach(tags, id: \.self) { tag in
+                Text("#\(tag)")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+            }
+        }
+    }
+}
+```
+
+Commit:
+```bash
+git add NoteApp/Features/NoteEditor/NoteEditorView.swift
+git commit -m "feat: add tag badge overlay showing detected hashtags
+
+- Display detected tags as badges in editor
+- Position in bottom-right corner with spacing
+- Use ultra-thin material background for subtlety
+- Animate appearance with slide and fade transition
+- Tags update as Vision framework detects them
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+```
+<!-- END_TASK_5 -->
 
 ---
 
