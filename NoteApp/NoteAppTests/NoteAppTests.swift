@@ -6,12 +6,59 @@
 //
 
 import Testing
+import ComposableArchitecture
 @testable import NoteApp
 
-struct NoteAppTests {
+struct AppFeatureTests {
 
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    @Test func focusModeToggled() async {
+        let store = TestStore(
+            initialState: AppFeature.State(
+                focusModeEnabled: false,
+                lastSyncDate: nil,
+                isOnline: true
+            ),
+            reducer: { AppFeature() }
+        )
+
+        await store.send(.focusModeToggled) {
+            $0.focusModeEnabled = true
+        }
+
+        await store.send(.focusModeToggled) {
+            $0.focusModeEnabled = false
+        }
     }
 
+    @Test func networkStatusChanged() async {
+        let store = TestStore(
+            initialState: AppFeature.State(
+                focusModeEnabled: false,
+                lastSyncDate: nil,
+                isOnline: true
+            ),
+            reducer: { AppFeature() }
+        )
+
+        await store.send(.networkStatusChanged(false)) {
+            $0.isOnline = false
+        }
+
+        await store.send(.networkStatusChanged(true)) {
+            $0.isOnline = true
+        }
+    }
+
+    @Test func onAppear() async {
+        let store = TestStore(
+            initialState: AppFeature.State(
+                focusModeEnabled: false,
+                lastSyncDate: nil,
+                isOnline: true
+            ),
+            reducer: { AppFeature() }
+        )
+
+        await store.send(.onAppear)
+    }
 }

@@ -1,6 +1,10 @@
 import ComposableArchitecture
 import Foundation
 
+/// AppFeature - Functional Core
+/// Pure reducer managing app-level state and actions.
+/// All state transformations are deterministic functions of (State, Action) -> (State, Effect).
+/// Side effects handled through effects in the reducer body.
 @Reducer
 struct AppFeature {
     @ObservableState

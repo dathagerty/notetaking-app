@@ -1,6 +1,9 @@
 import SwiftUI
 import ComposableArchitecture
 
+/// AppView - Imperative Shell
+/// SwiftUI view presenting app state and dispatching actions to the store.
+/// All UI rendering is driven by reactive state bindings to the TCA store.
 struct AppView: View {
     @Bindable var store: StoreOf<AppFeature>
 
@@ -33,7 +36,7 @@ struct AppView: View {
                 }
                 .padding()
                 .background(Color.gray.opacity(0.1))
-                .cornerRadius(10)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 Button {
                     store.send(.focusModeToggled)
@@ -42,7 +45,7 @@ struct AppView: View {
                         .padding()
                         .background(Color.blue)
                         .foregroundColor(.white)
-                        .cornerRadius(10)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
                 Text("Library, Editor, and Organization features coming in Phase 2-8")
