@@ -1,95 +1,204 @@
 # Implementation Plan Errata & Required Fixes
 
 **Date:** 2026-01-29
-**Status:** Issues identified by code-reviewer, must be addressed before implementation
+**Revised:** 2026-01-29 (after technical review)
+**Applied:** 2026-01-29 (all corrections integrated into phase files)
+**Status:** ✅ All issues corrected and applied to implementation plans
+
+---
+
+## Application Summary
+
+All corrections from this ERRATA have been successfully applied to the implementation plan files:
+
+**Phase 1 (phase_01.md):**
+- ✅ Added Dependencies/ folder to directory structure (Minor Issue 3)
+
+**Phase 2 (phase_02.md):**
+- ✅ Created ViewModels.swift with NotebookViewModel, NoteViewModel, TagViewModel (Critical Issue 2)
+- ✅ Renumbered tasks correctly after insertion
+
+**Phase 3 (phase_03.md):**
+- ✅ Updated LibraryFeature to use view models instead of SwiftData models (Critical Issue 2)
+- ✅ Changed to UUID-based selection for TCA State Equatable compliance (Critical Issue 2)
+- ✅ Added BreadcrumbView component for hierarchical navigation (Important Issue 1)
+- ✅ Fixed delete implementation with proper UUID tracking (Important Issue 4)
+- ✅ Updated all views (LibraryView, NotebookListView, NoteListView, NoteRowView) to work with view models
+
+**Phase 4 (phase_04.md):**
+- ✅ Replaced NSKeyedArchiver/Unarchiver with PKDrawing native serialization (Minor Issue 1)
+
+**Phase 6 (phase_06.md):**
+- ✅ Moved tagRepository dependency declaration to reducer level (Important Issue 5)
+- ✅ Updated to use modern PKDrawing serialization (Minor Issue 1)
+- ✅ Added TagBadgeOverlay showing detected hashtags in editor (Important Issue 2)
+
+**Phase 7 (phase_07.md):**
+- ✅ Replaced SSZipArchive with native FileManager.zipItem (Critical Issue 1)
+- ✅ Added progress indicator during handwriting conversion (Important Issue 3)
+- ✅ Replaced NSKeyedUnarchiver with PKDrawing(data:) in all locations (Minor Issue 1)
+
+**Phase 8 (phase_08.md):**
+- ✅ Fixed network monitor async/await with Task wrapper and proper cancellation (Important Issue 6)
+
+**Commit:** b29720b "fix: apply ERRATA corrections to all implementation phases"
 
 ---
 
 ## Critical Issues (Must Fix Before Implementation)
 
-### Critical 1: Remove ZipArchive Dependency
+### Critical 1: Use Native ZIP API Instead of SSZipArchive
 
-**Issue**: Phase 7 imports `ZipArchive` but no SPM dependency added
+**Issue**: Phase 7 imports `ZipArchive` and uses `SSZipArchive` but no SPM dependency is added
 
-**Location**: Phase 7, Task 3 - `ExportFeature.swift` line 4
+**Location**: Phase 7, Task 3 - `ExportFeature.swift`
 
-**Fix**: Replace ZipArchive with native iOS Compression framework
+**Fix**: Use native `FileManager.zipItem(at:to:)` (iOS 16+) instead of third-party dependency
 
 **Corrected code**:
 ```swift
-import Compression
-import Foundation
+// Remove: import ZipArchive
 
 // Replace SSZipArchive.createZipFile with:
-private func createZIP(from directory: URL, to destination: URL) throws {
-    let fileManager = FileManager.default
-    let files = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+private func exportMultipleNotes(_ notes: [Note], format: ExportFormat) async throws -> URL {
+    let tempDir = FileManager.default.temporaryDirectory
+    let exportDir = tempDir.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: exportDir, withIntermediateDirectories: true)
 
-    let archive = try FileHandle(forWritingTo: destination)
-    defer { try? archive.close() }
+    for note in notes {
+        guard let url = try? await exportSingleNote(note, format: format) else {
+            continue
+        }
 
-    for fileURL in files {
-        let data = try Data(contentsOf: fileURL)
-        let compressed = try (data as NSData).compressed(using: .lzfse) as Data
-        archive.write(compressed)
+        let fileName = url.lastPathComponent
+        let destination = exportDir.appendingPathComponent(fileName)
+        try FileManager.default.copyItem(at: url, to: destination)
+    }
+
+    // Create ZIP using native FileManager API (iOS 16+)
+    let zipURL = tempDir.appendingPathComponent("notes-export.zip")
+    try FileManager.default.zipItem(at: exportDir, to: zipURL)
+
+    // Cleanup export directory
+    try? FileManager.default.removeItem(at: exportDir)
+
+    return zipURL
+}
+```
+
+### ~~Critical 2: PKDrawing Not Equatable~~ — REMOVED (Invalid)
+
+**Original claim**: `PKDrawing` doesn't conform to `Equatable`
+
+**Verification result**: **This is incorrect.** Apple's documentation confirms `PKDrawing` conforms to `Equatable`, `Codable`, and `Sendable`. No fix is required—the original Phase 4 code is correct as written.
+
+### Critical 2: SwiftData Models Not Equatable (Renumbered)
+
+**Issue**: SwiftData `@Model` classes are reference types and don't auto-synthesize `Equatable`, which breaks TCA `State: Equatable` requirements
+
+**Location**: Phase 3 - `LibraryFeature.swift`, Phase 4 - `NoteEditorFeature.swift`
+
+**Root cause**: The original errata correctly identified the issue but provided an incomplete fix—it changed selected references to UUIDs while still keeping `[Notebook]` and `[Note]` arrays that also require Equatable conformance.
+
+**Fix**: Create lightweight value-type structs for list display and use UUIDs consistently
+
+**Corrected code**:
+```swift
+// Add to NoteApp/Models/ViewModels.swift (new file):
+
+/// Lightweight value type for displaying notebooks in lists
+struct NotebookViewModel: Equatable, Identifiable {
+    let id: UUID
+    let name: String
+    let createdAt: Date
+    let childCount: Int
+    let noteCount: Int
+
+    init(from notebook: Notebook) {
+        self.id = notebook.id
+        self.name = notebook.name
+        self.createdAt = notebook.createdAt
+        self.childCount = notebook.children?.count ?? 0
+        self.noteCount = notebook.notes?.count ?? 0
     }
 }
-```
 
-### Critical 2: PKDrawing Not Equatable
+/// Lightweight value type for displaying notes in lists
+struct NoteViewModel: Equatable, Identifiable {
+    let id: UUID
+    let title: String
+    let createdAt: Date
+    let updatedAt: Date
+    let hasDrawing: Bool
+    let tagNames: [String]
 
-**Issue**: `PKDrawing` doesn't conform to `Equatable`, breaks TCA `State: Equatable`
-
-**Location**: Phase 4 - `NoteEditorFeature.swift` State definition
-
-**Fix**: Mark `drawing` property with `@EquatableNoop`
-
-**Corrected code**:
-```swift
-@ObservableState
-struct State: Equatable {
-    var note: Note
-    @EquatableNoop var drawing: PKDrawing  // Add @EquatableNoop
-    var hasUnsavedChanges: Bool = false
-    var isSaving: Bool = false
-    @Presents var exitConfirmation: ConfirmationDialogState<Action.ExitConfirmation>?
+    init(from note: Note) {
+        self.id = note.id
+        self.title = note.title
+        self.createdAt = note.createdAt
+        self.updatedAt = note.updatedAt
+        self.hasDrawing = note.drawingData != nil
+        self.tagNames = note.tags?.map { $0.name } ?? []
+    }
 }
-```
 
-### Critical 3: SwiftData Models Not Equatable
-
-**Issue**: SwiftData `@Model` classes don't conform to `Equatable`, breaks TCA State
-
-**Location**: Phase 3 - `LibraryFeature.swift` State definition
-
-**Fix**: Use UUIDs instead of model references in TCA state
-
-**Corrected code**:
-```swift
+// Update LibraryFeature.swift:
 @ObservableState
 struct State: Equatable {
-    var notebooks: [Notebook] = []
-    var selectedNotebookId: UUID? = nil  // Changed from Notebook?
-    var notesInSelectedNotebook: [Note] = []
-    var selectedNoteId: UUID? = nil  // Changed from Note?
+    var notebooks: [NotebookViewModel] = []
+    var selectedNotebookId: UUID? = nil
+    var notes: [NoteViewModel] = []
+    var selectedNoteId: UUID? = nil
     var isLoading: Bool = false
     var errorMessage: String? = nil
 
-    // Computed properties for convenience
-    var selectedNotebook: Notebook? {
+    // Computed properties
+    var selectedNotebook: NotebookViewModel? {
         notebooks.first { $0.id == selectedNotebookId }
     }
 
-    var selectedNote: Note? {
-        notesInSelectedNotebook.first { $0.id == selectedNoteId }
+    var selectedNote: NoteViewModel? {
+        notes.first { $0.id == selectedNoteId }
     }
 }
 
-// Update actions to use UUIDs
 enum Action: Equatable {
-    case notebookSelected(UUID?)  // Changed from Notebook?
-    case noteSelected(UUID?)      // Changed from Note?
+    case notebookSelected(UUID?)
+    case noteSelected(UUID?)
+    case notebooksLoaded([NotebookViewModel])
+    case notesLoaded([NoteViewModel])
     // ...
+}
+
+// Update reducer to map models to view models:
+case .refreshData:
+    state.isLoading = true
+    return .run { [selectedNotebookId = state.selectedNotebookId] send in
+        do {
+            let notebooks = try await notebookRepo.fetchRootNotebooks()
+            let viewModels = notebooks.map { NotebookViewModel(from: $0) }
+            await send(.notebooksLoaded(viewModels))
+
+            if let notebookId = selectedNotebookId,
+               let notebook = notebooks.first(where: { $0.id == notebookId }) {
+                let notes = try await noteRepo.fetchNotes(in: notebook)
+                let noteViewModels = notes.map { NoteViewModel(from: $0) }
+                await send(.notesLoaded(noteViewModels))
+            }
+        } catch {
+            await send(.errorOccurred(error.localizedDescription))
+        }
+    }
+
+// Update NoteEditorFeature.swift - use noteId instead of Note:
+@ObservableState
+struct State: Equatable {
+    var noteId: UUID
+    var noteTitle: String
+    var drawing: PKDrawing  // PKDrawing IS Equatable
+    var hasUnsavedChanges: Bool = false
+    var isSaving: Bool = false
+    @Presents var exitConfirmation: ConfirmationDialogState<Action.ExitConfirmation>?
 }
 ```
 
@@ -108,8 +217,8 @@ enum Action: Equatable {
 **Add to NotebookListView.swift**:
 ```swift
 struct BreadcrumbView: View {
-    let path: [Notebook]
-    let onSelect: (Notebook?) -> Void
+    let path: [NotebookViewModel]
+    let onSelect: (UUID?) -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -118,13 +227,13 @@ struct BreadcrumbView: View {
                     onSelect(nil)
                 }
 
-                ForEach(Array(path.enumerated()), id: \.element.id) { index, notebook in
+                ForEach(path) { notebook in
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
 
                     Button(notebook.name) {
-                        onSelect(notebook)
+                        onSelect(notebook.id)
                     }
                 }
             }
@@ -134,8 +243,8 @@ struct BreadcrumbView: View {
 }
 
 // Add to NotebookListView above List:
-BreadcrumbView(path: store.notebookPath, onSelect: { notebook in
-    store.send(.navigateToBreadcrumb(notebook))
+BreadcrumbView(path: store.notebookPath, onSelect: { notebookId in
+    store.send(.navigateToBreadcrumb(notebookId))
 })
 ```
 
@@ -193,8 +302,8 @@ struct TagBadgeOverlay: View {
 **Add to NoteRowView.swift**:
 ```swift
 struct NoteRowView: View {
-    let note: Note
-    let isConverting: Bool  // Add parameter
+    let note: NoteViewModel
+    let isConverting: Bool
 
     var body: some View {
         HStack {
@@ -219,7 +328,7 @@ struct NoteRowView: View {
 }
 
 // Update NoteListView to pass isConverting:
-ForEach(store.notesInSelectedNotebook) { note in
+ForEach(store.notes) { note in
     NoteRowView(
         note: note,
         isConverting: store.convertingNoteId == note.id
@@ -238,16 +347,15 @@ ForEach(store.notesInSelectedNotebook) { note in
 **Replace deleteConfirmation handler**:
 ```swift
 case .deleteConfirmation(.presented(.confirmDelete)):
-    // Track what to delete
     guard let itemToDelete = state.itemPendingDeletion else { return .none }
 
     return .run { send in
         do {
             switch itemToDelete {
-            case .notebook(let notebook):
-                try await notebookRepo.deleteNotebook(id: notebook.id)
-            case .note(let note):
-                try await noteRepo.deleteNote(id: note.id)
+            case .notebook(let notebookId):
+                try await notebookRepo.deleteNotebook(id: notebookId)
+            case .note(let noteId):
+                try await noteRepo.deleteNote(id: noteId)
             }
             await send(.deleteCompleted)
         } catch {
@@ -255,18 +363,24 @@ case .deleteConfirmation(.presented(.confirmDelete)):
         }
     }
 
+// Update DeletableItem to use UUIDs:
+enum DeletableItem: Equatable {
+    case notebook(UUID)
+    case note(UUID)
+}
+
 // Add to State:
 var itemPendingDeletion: DeletableItem? = nil
 
 // Update showDeleteConfirmation:
 case .showDeleteConfirmation(let item):
-    state.itemPendingDeletion = item  // Track item to delete
+    state.itemPendingDeletion = item
     state.deleteConfirmation = ConfirmationDialogState { ... }
 ```
 
 ### Important 5: Fix TagRepository Dependency Declaration
 
-**Issue**: `@Dependency(\.tagRepository)` declared inside Effect closure is invalid
+**Issue**: `@Dependency(\.tagRepository)` declared inside Effect closure is non-idiomatic and may cause issues
 
 **Location**: Phase 6 - `NoteEditorFeature.swift` inside `.saveDrawing`
 
@@ -289,7 +403,7 @@ struct NoteEditorFeature {
             let extractor = HashtagExtractor()
             let detectedTags = try await extractor.extractHashtags(from: drawing)
 
-            // Use tagRepo (already declared above)
+            // Use tagRepo (captured from reducer scope)
             var tags: [Tag] = []
             for tagName in detectedTags {
                 let tag = try await tagRepo.fetchOrCreateTag(name: tagName)
@@ -304,11 +418,11 @@ struct NoteEditorFeature {
 
 ### Important 6: Fix Async/Await in Network Monitor
 
-**Issue**: `await send()` used in non-async closure
+**Issue**: `await send()` used in non-async closure; also missing proper cancellation handling
 
 **Location**: Phase 8 - `AppFeature.swift` network monitoring
 
-**Fix**: Wrap in Task
+**Fix**: Wrap in Task and add proper cancellation
 
 **Corrected code**:
 ```swift
@@ -319,16 +433,18 @@ case .startNetworkMonitoring:
 
         monitor.pathUpdateHandler = { path in
             let isOnline = path.status == .satisfied
-            Task {  // Wrap in Task
+            Task {
                 await send(.networkStatusChanged(isOnline))
             }
         }
 
         monitor.start(queue: queue)
 
-        // Keep monitor alive - proper pattern:
-        await withCheckedContinuation { continuation in
-            // Monitor stays alive for duration of effect
+        // Keep monitor alive with proper cancellation handling
+        await withTaskCancellationHandler {
+            await Task.never()
+        } onCancel: {
+            monitor.cancel()
         }
     }
 ```
@@ -337,27 +453,25 @@ case .startNetworkMonitoring:
 
 ## Minor Issues (Fix Before Final Release)
 
-### Minor 1: Use Modern PKDrawing Deserialization
+### Minor 1: Use Modern PKDrawing Serialization
 
-**Location**: Phase 4 & 7 - NSKeyedUnarchiver usage
+**Location**: Phase 4 & 7 - NSKeyedUnarchiver/Archiver usage
 
-**Fix**:
+**Fix**: Use PKDrawing's native serialization APIs
+
 ```swift
-// Replace NSKeyedUnarchiver pattern:
-let drawing = try PKDrawing(data: drawingData)
+// Serialization - replace NSKeyedArchiver:
+let data = drawing.dataRepresentation()
 
-// Instead of:
-let drawing = try NSKeyedUnarchiver.unarchivedObject(
-    ofClass: PKDrawing.self,
-    from: drawingData
-)
+// Deserialization - replace NSKeyedUnarchiver:
+let drawing = try PKDrawing(data: drawingData)
 ```
 
 ### Minor 2: Unify State Variable Names
 
 **Location**: Phase 3 vs Phase 6
 
-**Fix**: Rename `notesInSelectedNotebook` to `filteredNotes` throughout for consistency
+**Fix**: Use consistent naming - `notes` instead of `notesInSelectedNotebook` or `filteredNotes`
 
 ### Minor 3: Add Dependencies/ Folder to Phase 1
 
@@ -404,25 +518,35 @@ struct ExportOptionsView: View {
 ## Summary of Changes Required
 
 **Before Implementation Starts:**
-1. Fix ZipArchive → use Compression framework (or remove batch ZIP)
-2. Add `@EquatableNoop` to PKDrawing in NoteEditorFeature
-3. Change model references to UUIDs in LibraryFeature State
-4. Declare tagRepo at reducer level in NoteEditorFeature
-5. Fix async closure in network monitoring
+1. Use `FileManager.zipItem(at:to:)` for ZIP creation (remove SSZipArchive import)
+2. Create value-type view models for SwiftData entities to ensure Equatable conformance
+3. Declare `@Dependency` properties at reducer level, not inside closures
+4. Fix network monitor with `Task {}` wrapper and proper cancellation
 
 **For Design Completeness:**
-6. Add breadcrumb navigation component
-7. Add tag badge overlay in editor
-8. Add progress indicator during conversion
-9. Complete delete implementation
-10. Add export format selection UI
+5. Add breadcrumb navigation component
+6. Add tag badge overlay in editor
+7. Add progress indicator during conversion
+8. Complete delete implementation with UUID-based tracking
+9. Add export format selection UI
 
 **Polish (before final release):**
-11. Replace NSKeyedUnarchiver with PKDrawing(data:)
-12. Unify variable naming
-13. Add Dependencies/ folder to Phase 1
-14. Document OrganizationFeature structure decision
+10. Replace NSKeyedArchiver/Unarchiver with PKDrawing's native serialization
+11. Unify variable naming across features
+12. Add Dependencies/ folder to Phase 1
+13. Document OrganizationFeature structure decision
 
 ---
 
-**Status**: After these fixes, implementation plan will be APPROVED and ready for execution.
+## Corrections from Original Errata
+
+| Original Issue | Status | Reason |
+|----------------|--------|--------|
+| Critical 2: PKDrawing not Equatable | **REMOVED** | Incorrect - PKDrawing conforms to Equatable |
+| Critical 1: Compression framework fix | **CORRECTED** | Original fix was invalid (LZFSE ≠ ZIP); now uses FileManager.zipItem |
+| Critical 3: SwiftData fix | **EXPANDED** | Original fix was incomplete; now provides full value-type strategy |
+| Important 6: Network monitor | **EXPANDED** | Added proper cancellation handling |
+
+---
+
+**Status**: After these fixes, implementation plan is APPROVED and ready for execution.
