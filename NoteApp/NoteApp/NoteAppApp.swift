@@ -8,6 +8,9 @@
 import SwiftUI
 import ComposableArchitecture
 
+/// NoteAppApp - Imperative Shell
+/// App entry point that initializes the root TCA Store.
+/// Bootstraps the app by creating the initial state and connecting the root reducer.
 @main
 struct NoteAppApp: App {
     let store = Store(

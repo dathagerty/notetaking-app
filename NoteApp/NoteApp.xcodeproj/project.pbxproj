@@ -64,6 +64,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				56C7B7802F2D05E70036F0D6 /* ComposableArchitecture in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -141,6 +142,7 @@
 			);
 			name = NoteAppTests;
 			packageProductDependencies = (
+				56C7B7812F2D05E70036F0D6 /* ComposableArchitecture */,
 			);
 			productName = NoteAppTests;
 			productReference = 56C7B7612F2D04980036F0D6 /* NoteAppTests.xctest */;
