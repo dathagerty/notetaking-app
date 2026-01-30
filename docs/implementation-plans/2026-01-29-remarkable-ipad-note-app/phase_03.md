@@ -39,31 +39,45 @@ import Foundation
 struct LibraryFeature {
     @ObservableState
     struct State: Equatable {
-        var notebooks: [Notebook] = []
-        var selectedNotebook: Notebook? = nil
-        var notesInSelectedNotebook: [Note] = []
-        var selectedNote: Note? = nil
+        var notebooks: [NotebookViewModel] = []
+        var selectedNotebookId: UUID? = nil
+        var notes: [NoteViewModel] = []
+        var selectedNoteId: UUID? = nil
+        var notebookPath: [NotebookViewModel] = []  // For breadcrumb navigation
         var isLoading: Bool = false
         var errorMessage: String? = nil
+
+        // Delete tracking
+        var itemPendingDeletion: DeletableItem? = nil
 
         // Create/edit state
         @Presents var createNotebookAlert: AlertState<Action.CreateNotebookAlert>?
         @Presents var createNoteAlert: AlertState<Action.CreateNoteAlert>?
         @Presents var deleteConfirmation: ConfirmationDialogState<Action.DeleteConfirmation>?
+
+        // Computed properties
+        var selectedNotebook: NotebookViewModel? {
+            notebooks.first { $0.id == selectedNotebookId }
+        }
+
+        var selectedNote: NoteViewModel? {
+            notes.first { $0.id == selectedNoteId }
+        }
     }
 
     enum Action: Equatable {
         case onAppear
         case refreshData
-        case notebooksLoaded([Notebook])
-        case notesLoaded([Note])
+        case notebooksLoaded([NotebookViewModel])
+        case notesLoaded([NoteViewModel])
 
         // Navigation
-        case notebookSelected(Notebook?)
-        case noteSelected(Note?)
+        case notebookSelected(UUID?)
+        case noteSelected(UUID?)
+        case navigateToBreadcrumb(UUID?)
 
         // Create
-        case showCreateNotebook(parent: Notebook?)
+        case showCreateNotebook(parentId: UUID?)
         case showCreateNote
         case createNotebookAlert(PresentationAction<CreateNotebookAlert>)
         case createNoteAlert(PresentationAction<CreateNoteAlert>)
@@ -76,7 +90,7 @@ struct LibraryFeature {
         case errorOccurred(String)
 
         enum CreateNotebookAlert: Equatable {
-            case create(name: String, parent: Notebook?)
+            case create(name: String, parentId: UUID?)
         }
 
         enum CreateNoteAlert: Equatable {
@@ -89,8 +103,8 @@ struct LibraryFeature {
     }
 
     enum DeletableItem: Equatable {
-        case notebook(Notebook)
-        case note(Note)
+        case notebook(UUID)
+        case note(UUID)
     }
 
     @Dependency(\.notebookRepository) var notebookRepo
@@ -106,38 +120,45 @@ struct LibraryFeature {
 
             case .refreshData:
                 state.isLoading = true
-                return .run { [selectedNotebook = state.selectedNotebook] send in
+                return .run { [selectedNotebookId = state.selectedNotebookId] send in
                     do {
                         let notebooks = try await notebookRepo.fetchRootNotebooks()
-                        await send(.notebooksLoaded(notebooks))
+                        let viewModels = notebooks.map { NotebookViewModel(from: $0) }
+                        await send(.notebooksLoaded(viewModels))
 
-                        if let notebook = selectedNotebook {
+                        if let notebookId = selectedNotebookId,
+                           let notebook = notebooks.first(where: { $0.id == notebookId }) {
                             let notes = try await noteRepo.fetchNotes(in: notebook)
-                            await send(.notesLoaded(notes))
+                            let noteViewModels = notes.map { NoteViewModel(from: $0) }
+                            await send(.notesLoaded(noteViewModels))
                         }
                     } catch {
                         await send(.errorOccurred(error.localizedDescription))
                     }
                 }
 
-            case .notebooksLoaded(let notebooks):
-                state.notebooks = notebooks
+            case .notebooksLoaded(let viewModels):
+                state.notebooks = viewModels
                 state.isLoading = false
                 return .none
 
-            case .notesLoaded(let notes):
-                state.notesInSelectedNotebook = notes
+            case .notesLoaded(let viewModels):
+                state.notes = viewModels
                 state.isLoading = false
                 return .none
 
-            case .notebookSelected(let notebook):
-                state.selectedNotebook = notebook
-                state.selectedNote = nil
-                if let notebook = notebook {
+            case .notebookSelected(let notebookId):
+                state.selectedNotebookId = notebookId
+                state.selectedNoteId = nil
+                if let notebookId = notebookId {
                     return .run { send in
                         do {
+                            let notebook = try await notebookRepo.fetchNotebook(id: notebookId)
+                            guard let notebook = notebook else { return }
+
                             let notes = try await noteRepo.fetchNotes(in: notebook)
-                            await send(.notesLoaded(notes))
+                            let viewModels = notes.map { NoteViewModel(from: $0) }
+                            await send(.notesLoaded(viewModels))
                         } catch {
                             await send(.errorOccurred(error.localizedDescription))
                         }
@@ -145,16 +166,19 @@ struct LibraryFeature {
                 }
                 return .none
 
-            case .noteSelected(let note):
-                state.selectedNote = note
+            case .noteSelected(let noteId):
+                state.selectedNoteId = noteId
                 // Phase 4 will handle navigation to editor
                 return .none
 
-            case .showCreateNotebook(let parent):
+            case .navigateToBreadcrumb(let notebookId):
+                return .send(.notebookSelected(notebookId))
+
+            case .showCreateNotebook(let parentId):
                 state.createNotebookAlert = AlertState {
                     TextState("New Notebook")
                 } actions: {
-                    ButtonState(action: .create(name: "", parent: parent)) {
+                    ButtonState(action: .create(name: "", parentId: parentId)) {
                         TextState("Create")
                     }
                     ButtonState(role: .cancel) {
@@ -166,7 +190,7 @@ struct LibraryFeature {
                 return .none
 
             case .showCreateNote:
-                guard state.selectedNotebook != nil else {
+                guard state.selectedNotebookId != nil else {
                     state.errorMessage = "Select a notebook first"
                     return .none
                 }
@@ -184,10 +208,15 @@ struct LibraryFeature {
                 }
                 return .none
 
-            case .createNotebookAlert(.presented(.create(let name, let parent))):
+            case .createNotebookAlert(.presented(.create(let name, let parentId))):
                 guard !name.isEmpty else { return .none }
                 return .run { send in
                     do {
+                        let parent = if let parentId = parentId {
+                            try await notebookRepo.fetchNotebook(id: parentId)
+                        } else {
+                            nil
+                        }
                         _ = try await notebookRepo.createNotebook(name: name, parent: parent)
                         await send(.refreshData)
                     } catch {
@@ -196,9 +225,12 @@ struct LibraryFeature {
                 }
 
             case .createNoteAlert(.presented(.create(let title))):
-                guard let notebook = state.selectedNotebook else { return .none }
+                guard let notebookId = state.selectedNotebookId else { return .none }
                 return .run { send in
                     do {
+                        let notebook = try await notebookRepo.fetchNotebook(id: notebookId)
+                        guard let notebook = notebook else { return }
+
                         _ = try await noteRepo.createNote(
                             title: title.isEmpty ? "Untitled" : title,
                             content: "",
@@ -214,6 +246,7 @@ struct LibraryFeature {
                 return .none
 
             case .showDeleteConfirmation(let item):
+                state.itemPendingDeletion = item
                 state.deleteConfirmation = ConfirmationDialogState {
                     TextState("Delete?")
                 } actions: {
@@ -225,24 +258,44 @@ struct LibraryFeature {
                     }
                 } message: {
                     switch item {
-                    case .notebook(let notebook):
-                        TextState("Delete '\(notebook.name)' and all its contents?")
-                    case .note(let note):
-                        TextState("Delete '\(note.title)'?")
+                    case .notebook(let notebookId):
+                        if let notebook = state.notebooks.first(where: { $0.id == notebookId }) {
+                            TextState("Delete '\(notebook.name)' and all its contents?")
+                        } else {
+                            TextState("Delete this notebook and all its contents?")
+                        }
+                    case .note(let noteId):
+                        if let note = state.notes.first(where: { $0.id == noteId }) {
+                            TextState("Delete '\(note.title)'?")
+                        } else {
+                            TextState("Delete this note?")
+                        }
                     }
                 }
                 return .none
 
             case .deleteConfirmation(.presented(.confirmDelete)):
-                // Implementation in actual delete handler
+                guard let itemToDelete = state.itemPendingDeletion else { return .none }
+
                 return .run { send in
-                    await send(.deleteCompleted)
+                    do {
+                        switch itemToDelete {
+                        case .notebook(let notebookId):
+                            try await notebookRepo.deleteNotebook(id: notebookId)
+                        case .note(let noteId):
+                            try await noteRepo.deleteNote(id: noteId)
+                        }
+                        await send(.deleteCompleted)
+                    } catch {
+                        await send(.errorOccurred(error.localizedDescription))
+                    }
                 }
 
             case .deleteConfirmation:
                 return .none
 
             case .deleteCompleted:
+                state.itemPendingDeletion = nil
                 return .run { send in
                     await send(.refreshData)
                 }
@@ -302,7 +355,8 @@ struct LibraryView: View {
             NoteListView(store: store)
         } detail: {
             // Detail: Selected note (placeholder until Phase 4)
-            if let note = store.selectedNote {
+            if let noteId = store.selectedNoteId,
+               let note = store.notes.first(where: { $0.id == noteId }) {
                 Text("Note: \(note.title)")
                     .font(.title)
                 Text("Editor coming in Phase 4")
@@ -322,7 +376,7 @@ struct LibraryView: View {
 }
 ```
 
-**Step 2: Create NotebookListView**
+**Step 2: Create NotebookListView with Breadcrumb Navigation**
 
 ```swift
 import SwiftUI
@@ -332,30 +386,71 @@ struct NotebookListView: View {
     @Bindable var store: StoreOf<LibraryFeature>
 
     var body: some View {
-        List(selection: $store.selectedNotebook.sending(\.notebookSelected)) {
-            ForEach(store.notebooks) { notebook in
-                Label(notebook.name, systemImage: "folder")
-                    .tag(notebook as Notebook?)
-                    .contextMenu {
-                        Button("New Notebook") {
-                            store.send(.showCreateNotebook(parent: notebook))
-                        }
-                        Button("Delete", role: .destructive) {
-                            store.send(.showDeleteConfirmation(item: .notebook(notebook)))
-                        }
+        VStack(spacing: 0) {
+            // Breadcrumb navigation
+            if !store.notebookPath.isEmpty {
+                BreadcrumbView(
+                    path: store.notebookPath,
+                    onSelect: { notebookId in
+                        store.send(.navigateToBreadcrumb(notebookId))
                     }
+                )
+            }
+
+            List(selection: $store.selectedNotebookId.sending(\.notebookSelected)) {
+                ForEach(store.notebooks) { notebook in
+                    Label(notebook.name, systemImage: "folder")
+                        .tag(notebook.id as UUID?)
+                        .contextMenu {
+                            Button("New Notebook") {
+                                store.send(.showCreateNotebook(parentId: notebook.id))
+                            }
+                            Button("Delete", role: .destructive) {
+                                store.send(.showDeleteConfirmation(item: .notebook(notebook.id)))
+                            }
+                        }
+                }
             }
         }
         .navigationTitle("Notebooks")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    store.send(.showCreateNotebook(parent: nil))
+                    store.send(.showCreateNotebook(parentId: nil))
                 } label: {
                     Label("New Notebook", systemImage: "folder.badge.plus")
                 }
             }
         }
+    }
+}
+
+// Breadcrumb component for hierarchical navigation
+struct BreadcrumbView: View {
+    let path: [NotebookViewModel]
+    let onSelect: (UUID?) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                Button("All") {
+                    onSelect(nil)
+                }
+
+                ForEach(path) { notebook in
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Button(notebook.name) {
+                        onSelect(notebook.id)
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+        .frame(height: 40)
+        .background(Color(.systemGray6))
     }
 }
 ```
@@ -371,14 +466,15 @@ struct NoteListView: View {
 
     var body: some View {
         Group {
-            if let notebook = store.selectedNotebook {
-                List(selection: $store.selectedNote.sending(\.noteSelected)) {
-                    ForEach(store.notesInSelectedNotebook) { note in
+            if let notebookId = store.selectedNotebookId,
+               let notebook = store.notebooks.first(where: { $0.id == notebookId }) {
+                List(selection: $store.selectedNoteId.sending(\.noteSelected)) {
+                    ForEach(store.notes) { note in
                         NoteRowView(note: note)
-                            .tag(note as Note?)
+                            .tag(note.id as UUID?)
                             .contextMenu {
                                 Button("Delete", role: .destructive) {
-                                    store.send(.showDeleteConfirmation(item: .note(note)))
+                                    store.send(.showDeleteConfirmation(item: .note(note.id)))
                                 }
                             }
                     }
@@ -408,7 +504,7 @@ struct NoteListView: View {
 import SwiftUI
 
 struct NoteRowView: View {
-    let note: Note
+    let note: NoteViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {

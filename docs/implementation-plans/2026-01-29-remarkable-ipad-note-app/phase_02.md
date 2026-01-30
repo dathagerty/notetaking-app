@@ -73,7 +73,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 
 <!-- END_TASK_1 -->
 
-<!-- START_SUBCOMPONENT_A (tasks 2-3) -->
+<!-- START_SUBCOMPONENT_A (tasks 2-4) -->
 <!-- START_TASK_2 -->
 ### Task 2: Create SwiftData Models
 
@@ -206,7 +206,97 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 <!-- END_TASK_2 -->
 
 <!-- START_TASK_3 -->
-### Task 3: Configure ModelContainer with CloudKit
+### Task 3: Create View Models for TCA State
+
+**Files:**
+- Create: `NoteApp/Models/ViewModels.swift`
+
+**Step 1: Create ViewModels file**
+
+Create `NoteApp/Models/ViewModels.swift`:
+
+```swift
+import Foundation
+
+/// Lightweight value type for displaying notebooks in lists
+/// Required because SwiftData @Model classes don't conform to Equatable
+struct NotebookViewModel: Equatable, Identifiable {
+    let id: UUID
+    let name: String
+    let createdAt: Date
+    let updatedAt: Date
+    let childCount: Int
+    let noteCount: Int
+
+    init(from notebook: Notebook) {
+        self.id = notebook.id
+        self.name = notebook.name
+        self.createdAt = notebook.createdAt
+        self.updatedAt = notebook.updatedAt
+        self.childCount = notebook.children?.count ?? 0
+        self.noteCount = notebook.notes?.count ?? 0
+    }
+}
+
+/// Lightweight value type for displaying notes in lists
+/// Required because SwiftData @Model classes don't conform to Equatable
+struct NoteViewModel: Equatable, Identifiable {
+    let id: UUID
+    let title: String
+    let content: String
+    let createdAt: Date
+    let updatedAt: Date
+    let hasDrawing: Bool
+    let tagNames: [String]
+
+    init(from note: Note) {
+        self.id = note.id
+        self.title = note.title
+        self.content = note.content
+        self.createdAt = note.createdAt
+        self.updatedAt = note.updatedAt
+        self.hasDrawing = note.drawingData != nil
+        self.tagNames = note.tags?.map { $0.name } ?? []
+    }
+}
+
+/// Lightweight value type for displaying tags
+struct TagViewModel: Equatable, Identifiable {
+    let id: UUID
+    let name: String
+
+    init(from tag: Tag) {
+        self.id = tag.id
+        self.name = tag.name
+    }
+}
+```
+
+**Step 2: Build to verify view models compile**
+
+Run: Product → Build (Cmd+B)
+
+Expected: Build succeeds, view models available for TCA features
+
+**Step 3: Commit view models**
+
+```bash
+git add NoteApp/Models/ViewModels.swift
+git commit -m "feat: create value-type view models for TCA state
+
+- Add NotebookViewModel as Equatable wrapper for Notebook
+- Add NoteViewModel as Equatable wrapper for Note
+- Add TagViewModel as Equatable wrapper for Tag
+- Enables using models in TCA State which requires Equatable
+- View models are lightweight value types safe for TCA
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+```
+
+<!-- END_TASK_3 -->
+
+<!-- START_TASK_4 -->
+### Task 4: Configure ModelContainer with CloudKit
 
 **Files:**
 - Modify: `NoteApp/NoteAppApp.swift`
@@ -285,12 +375,12 @@ git commit -m "feat: configure ModelContainer with CloudKit private database
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 ```
 
-<!-- END_TASK_3 -->
+<!-- END_TASK_4 -->
 <!-- END_SUBCOMPONENT_A -->
 
-<!-- START_SUBCOMPONENT_B (tasks 4-6) -->
-<!-- START_TASK_4 -->
-### Task 4: Create Repository Protocols
+<!-- START_SUBCOMPONENT_B (tasks 5-7) -->
+<!-- START_TASK_5 -->
+### Task 5: Create Repository Protocols
 
 **Files:**
 - Create: `NoteApp/Repositories/NoteRepository.swift`
@@ -555,10 +645,10 @@ git commit -m "feat: create repository protocols for data access abstraction
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 ```
 
-<!-- END_TASK_4 -->
+<!-- END_TASK_5 -->
 
-<!-- START_TASK_5 -->
-### Task 5: Register Repositories as TCA Dependencies
+<!-- START_TASK_6 -->
+### Task 6: Register Repositories as TCA Dependencies
 
 **Files:**
 - Create: `NoteApp/Dependencies/RepositoryDependencies.swift`
@@ -730,10 +820,10 @@ git commit -m "feat: register repositories as TCA dependencies
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 ```
 
-<!-- END_TASK_5 -->
+<!-- END_TASK_6 -->
 
-<!-- START_TASK_6 -->
-### Task 6: Verify Persistence and CloudKit Sync
+<!-- START_TASK_7 -->
+### Task 7: Verify Persistence and CloudKit Sync
 
 **Files:**
 - No file changes (manual testing)
@@ -823,7 +913,7 @@ git commit -m "feat: verify Phase 2 data persistence and CloudKit sync
 Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 ```
 
-<!-- END_TASK_6 -->
+<!-- END_TASK_7 -->
 <!-- END_SUBCOMPONENT_B -->
 
 ---

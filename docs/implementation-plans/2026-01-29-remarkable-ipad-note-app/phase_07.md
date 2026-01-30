@@ -4,7 +4,7 @@
 
 **Architecture:** HandwritingRecognition service with Vision framework, ExportFeature for PDF/image generation, UIActivityViewController integration
 
-**Tech Stack:** Vision framework (full text recognition), PDFKit, UIActivityViewController, ZipArchive
+**Tech Stack:** Vision framework (full text recognition), PDFKit, UIActivityViewController, native FileManager ZIP (iOS 16+)
 
 **Scope:** Phase 7 of 8 from original design
 
@@ -119,14 +119,8 @@ case .convertHandwriting(let note):
                 throw RecognitionError.invalidImage
             }
 
-            let drawing = try NSKeyedUnarchiver.unarchivedObject(
-                ofClass: PKDrawing.self,
-                from: drawingData
-            )
-
-            guard let drawing = drawing else {
-                throw RecognitionError.invalidImage
-            }
+            // Use PKDrawing's native deserialization
+            let drawing = try PKDrawing(data: drawingData)
 
             let recognitionService = HandwritingRecognitionService()
             let text = try await recognitionService.recognizeText(from: drawing)
@@ -166,6 +160,49 @@ Update context menu in `NoteListView.swift`:
 }
 ```
 
+Update `NoteRowView.swift` to show progress indicator:
+```swift
+import SwiftUI
+
+struct NoteRowView: View {
+    let note: NoteViewModel
+    let isConverting: Bool = false  // Add parameter
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(note.title.isEmpty ? "Untitled" : note.title)
+                    .font(.headline)
+
+                Text(note.createdAt, style: .relative)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            if isConverting {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+```
+
+Update `NoteListView.swift` to pass isConverting:
+```swift
+ForEach(store.notes) { note in
+    NoteRowView(
+        note: note,
+        isConverting: store.convertingNoteId == note.id
+    )
+    .tag(note.id as UUID?)
+    .contextMenu { /* ... */ }
+}
+```
+
 Commit:
 ```bash
 git add NoteApp/Features/Library/LibraryFeature.swift NoteApp/Features/Library/NoteListView.swift
@@ -192,7 +229,6 @@ import ComposableArchitecture
 import PencilKit
 import PDFKit
 import UIKit
-import ZipArchive
 
 @Reducer
 struct ExportFeature {
@@ -273,14 +309,8 @@ struct ExportFeature {
             throw ExportError.noDrawing
         }
 
-        let drawing = try NSKeyedUnarchiver.unarchivedObject(
-            ofClass: PKDrawing.self,
-            from: drawingData
-        )
-
-        guard let drawing = drawing else {
-            throw ExportError.invalidDrawing
-        }
+        // Use PKDrawing's native deserialization
+        let drawing = try PKDrawing(data: drawingData)
 
         let fileName = sanitizeFileName(note.title.isEmpty ? "Untitled" : note.title)
         let tempDir = FileManager.default.temporaryDirectory
@@ -324,9 +354,12 @@ struct ExportFeature {
             try FileManager.default.copyItem(at: url, to: destination)
         }
 
-        // Create ZIP
+        // Create ZIP using native FileManager API (iOS 16+)
         let zipURL = tempDir.appendingPathComponent("notes-export.zip")
-        SSZipArchive.createZipFile(atPath: zipURL.path, withContentsOfDirectory: exportDir.path)
+        try FileManager.default.zipItem(at: exportDir, to: zipURL)
+
+        // Cleanup export directory
+        try? FileManager.default.removeItem(at: exportDir)
 
         return zipURL
     }

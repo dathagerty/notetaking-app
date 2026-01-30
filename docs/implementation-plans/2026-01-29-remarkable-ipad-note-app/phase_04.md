@@ -72,11 +72,9 @@ struct NoteEditorFeature {
                 // Load existing drawing if available
                 if let data = state.note.drawingData {
                     do {
-                        let drawing = try NSKeyedUnarchiver.unarchivedObject(
-                            ofClass: PKDrawing.self,
-                            from: data
-                        )
-                        state.drawing = drawing ?? PKDrawing()
+                        // Use PKDrawing's native deserialization
+                        let drawing = try PKDrawing(data: data)
+                        state.drawing = drawing
                     } catch {
                         state.drawing = PKDrawing()
                     }
@@ -105,11 +103,8 @@ struct NoteEditorFeature {
 
                 return .run { send in
                     do {
-                        // Serialize PKDrawing to Data
-                        let data = try NSKeyedArchiver.archivedData(
-                            withRootObject: drawing,
-                            requiringSecureCoding: true
-                        )
+                        // Use PKDrawing's native serialization
+                        let data = drawing.dataRepresentation()
 
                         // Update note via repository
                         note.drawingData = data
