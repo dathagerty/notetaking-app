@@ -28,9 +28,9 @@ struct NoteAppApp: App {
 
             let modelConfiguration = ModelConfiguration(
                 schema: schema,
-                isStoredInMemoryOnly: false,
-                cloudKitDatabase: .private // Private database for user's personal notes
+                isStoredInMemoryOnly: false
             )
+            // Note: CloudKit configuration happens automatically with entitlements
 
             self.modelContainer = try ModelContainer(
                 for: schema,

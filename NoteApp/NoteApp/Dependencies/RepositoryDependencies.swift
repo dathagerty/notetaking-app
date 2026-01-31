@@ -11,7 +11,7 @@ enum NoteRepositoryKey: DependencyKey {
     }
 
     static var testValue: any NoteRepository {
-        unimplemented("NoteRepository not implemented for tests")
+        fatalError("NoteRepository not implemented for tests")
     }
 }
 
@@ -22,7 +22,7 @@ enum NotebookRepositoryKey: DependencyKey {
     }
 
     static var testValue: any NotebookRepository {
-        unimplemented("NotebookRepository not implemented for tests")
+        fatalError("NotebookRepository not implemented for tests")
     }
 }
 
@@ -33,7 +33,7 @@ enum TagRepositoryKey: DependencyKey {
     }
 
     static var testValue: any TagRepository {
-        unimplemented("TagRepository not implemented for tests")
+        fatalError("TagRepository not implemented for tests")
     }
 }
 
@@ -50,11 +50,15 @@ enum ModelContextKey: DependencyKey {
             schema: schema,
             isStoredInMemoryOnly: true
         )
-        let container = try! ModelContainer(
-            for: schema,
-            configurations: [configuration]
-        )
-        return ModelContext(container)
+        do {
+            let container = try ModelContainer(
+                for: schema,
+                configurations: [configuration]
+            )
+            return ModelContext(container)
+        } catch {
+            fatalError("Failed to create test ModelContainer: \(error)")
+        }
     }
 }
 

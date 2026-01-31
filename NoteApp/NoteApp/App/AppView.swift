@@ -13,7 +13,7 @@ struct AppView: View {
                 Text("reMarkable iPad Note App")
                     .font(.largeTitle)
 
-                Text("Phase 1: Project Setup Complete")
+                Text("Phase 2: Data Models Complete")
                     .font(.headline)
 
                 VStack(alignment: .leading, spacing: 10) {

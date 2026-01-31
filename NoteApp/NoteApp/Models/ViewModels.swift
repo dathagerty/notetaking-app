@@ -15,6 +15,9 @@ struct NotebookViewModel: Equatable, Identifiable {
         self.name = notebook.name
         self.createdAt = notebook.createdAt
         self.updatedAt = notebook.updatedAt
+        // Note: Using .count on optional arrays is safe here because we only access during
+        // initialization. The view models are lightweight value types used only for display
+        // and don't trigger query evaluation like @Query would in iOS 18+.
         self.childCount = notebook.children?.count ?? 0
         self.noteCount = notebook.notes?.count ?? 0
     }
