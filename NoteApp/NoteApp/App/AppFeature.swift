@@ -13,8 +13,8 @@ struct AppFeature {
         var lastSyncDate: Date?
         var isOnline: Bool = true
 
-        // Child feature states (will be populated in later phases)
-        // Phase 3: var library: LibraryFeature.State = .init()
+        // Phase 3: Library feature
+        var library: LibraryFeature.State = .init()
     }
 
     enum Action: Equatable {
@@ -22,11 +22,15 @@ struct AppFeature {
         case focusModeToggled
         case networkStatusChanged(Bool)
 
-        // Child feature actions (will be populated in later phases)
-        // Phase 3: case library(LibraryFeature.Action)
+        // Phase 3: Library actions
+        case library(LibraryFeature.Action)
     }
 
     var body: some Reducer<State, Action> {
+        Scope(state: \.library, action: \.library) {
+            LibraryFeature()
+        }
+
         Reduce { state, action in
             switch action {
             case .onAppear:
@@ -39,6 +43,9 @@ struct AppFeature {
 
             case .networkStatusChanged(let isOnline):
                 state.isOnline = isOnline
+                return .none
+
+            case .library:
                 return .none
             }
         }
