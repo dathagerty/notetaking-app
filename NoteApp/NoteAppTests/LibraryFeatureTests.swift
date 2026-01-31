@@ -67,11 +67,18 @@ struct LibraryFeatureTests {
         var mockNotes: [Note] = []
         var shouldThrowError = false
 
-        func fetchNotes(in notebook: Notebook) async throws -> [Note] {
+        func fetchAllNotes() async throws -> [Note] {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
             }
             return mockNotes
+        }
+
+        func fetchNotes(in notebook: Notebook) async throws -> [Note] {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return mockNotes.filter { $0.notebook?.id == notebook.id }
         }
 
         func fetchNote(id: UUID) async throws -> Note? {
@@ -81,7 +88,7 @@ struct LibraryFeatureTests {
             return mockNotes.first(where: { $0.id == id })
         }
 
-        func createNote(title: String, content: String, notebook: Notebook) async throws -> Note {
+        func createNote(title: String, content: String, notebook: Notebook?) async throws -> Note {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
             }
@@ -98,6 +105,15 @@ struct LibraryFeatureTests {
         func deleteNote(id: UUID) async throws {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
+            }
+        }
+
+        func searchNotes(query: String) async throws -> [Note] {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return mockNotes.filter { note in
+                note.title.contains(query) || note.content.contains(query)
             }
         }
     }
@@ -165,7 +181,7 @@ struct LibraryFeatureTests {
 
         let store = TestStore(
             initialState: LibraryFeature.State(
-                notes: [NotebookViewModel(from: Notebook())]
+                notes: [NoteViewModel(from: note)]
             ),
             reducer: { LibraryFeature() }
         )
@@ -205,7 +221,7 @@ struct LibraryFeatureTests {
             $0.noteRepository = mockNoteRepo
         }
 
-        await store.send(.createNotebookSheet(.presented(.createButtonTapped))) { state in
+        await store.send(.createNotebookSheetAction(.createButtonTapped)) { state in
             state.createNotebookSheet = nil
         }
 
@@ -224,7 +240,7 @@ struct LibraryFeatureTests {
             reducer: { LibraryFeature() }
         )
 
-        await store.send(.createNotebookSheet(.presented(.createButtonTapped))) { state in
+        await store.send(.createNotebookSheetAction(.createButtonTapped)) { state in
             #expect(state.errorMessage == "Notebook name cannot be empty")
         }
     }
@@ -272,7 +288,7 @@ struct LibraryFeatureTests {
             $0.noteRepository = mockNoteRepo
         }
 
-        await store.send(.createNoteSheet(.presented(.createButtonTapped))) { state in
+        await store.send(.createNoteSheetAction(.createButtonTapped)) { state in
             state.createNoteSheet = nil
         }
 
@@ -331,7 +347,7 @@ struct LibraryFeatureTests {
 
         let store = TestStore(
             initialState: LibraryFeature.State(
-                notes: [NotebookViewModel(from: Notebook())],
+                notes: [NoteViewModel(from: note)],
                 itemPendingDeletion: .note(noteId),
                 deleteConfirmation: ConfirmationDialogState(
                     title: { TextState("Delete?") },
