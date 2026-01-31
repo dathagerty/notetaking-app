@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		560A3A972F2E79F1008B0F39 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		56C7B7802F2D05E70036F0D6 /* ComposableArchitecture in Frameworks */ = {isa = PBXBuildFile; productRef = 56C7B77F2F2D05E70036F0D6 /* ComposableArchitecture */; };
 /* End PBXBuildFile section */
 
@@ -64,7 +65,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				56C7B7802F2D05E70036F0D6 /* ComposableArchitecture in Frameworks */,
+				560A3A972F2E79F1008B0F39 /* (null) in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,7 +143,6 @@
 			);
 			name = NoteAppTests;
 			packageProductDependencies = (
-				56C7B7812F2D05E70036F0D6 /* ComposableArchitecture */,
 			);
 			productName = NoteAppTests;
 			productReference = 56C7B7612F2D04980036F0D6 /* NoteAppTests.xctest */;
@@ -406,6 +406,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NoteApp/NoteApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 28DGV4K4LR;
@@ -443,6 +444,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = NoteApp/NoteApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 28DGV4K4LR;
