@@ -6,8 +6,8 @@ struct NoteListView: View {
 
     var body: some View {
         Group {
-            if let notebookId = store.selectedNotebookId,
-               let notebook = store.notebooks.first(where: { $0.id == notebookId }) {
+            if let notebookId = store.selectedNotebookId {
+                let notebookName = store.notebooks.first(where: { $0.id == notebookId })?.name ?? "Notebook"
                 List(selection: $store.selectedNoteId.sending(\.noteSelected)) {
                     ForEach(store.notes) { note in
                         NoteRowView(note: note)
@@ -19,7 +19,7 @@ struct NoteListView: View {
                             }
                     }
                 }
-                .navigationTitle(notebook.name)
+                .navigationTitle(notebookName)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
