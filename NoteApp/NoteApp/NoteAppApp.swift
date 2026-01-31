@@ -37,11 +37,15 @@ struct NoteAppApp: App {
                 configurations: [modelConfiguration]
             )
 
-            // Initialize TCA store
+            // Provide ModelContext to TCA dependency system
+            let modelContext = ModelContext(modelContainer)
+
             self.store = Store(
                 initialState: AppFeature.State(),
                 reducer: { AppFeature() }
-            )
+            ) {
+                $0.modelContext = modelContext
+            }
         } catch {
             fatalError("Failed to configure ModelContainer: \(error)")
         }
