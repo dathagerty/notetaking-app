@@ -238,8 +238,6 @@ struct LibraryFeature {
             case .createNotebookSheet, .createNoteSheet:
                 return .none
 
-            case .deleteConfirmation(.presented(.confirmDelete)):
-
             case .showDeleteConfirmation(let item):
                 state.itemPendingDeletion = item
                 state.deleteConfirmation = ConfirmationDialogState {
