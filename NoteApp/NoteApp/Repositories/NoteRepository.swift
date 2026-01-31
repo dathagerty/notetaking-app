@@ -1,6 +1,17 @@
 import Foundation
 import SwiftData
 
+enum NoteRepositoryError: LocalizedError {
+    case invalidTitle(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidTitle(let message):
+            return message
+        }
+    }
+}
+
 protocol NoteRepository: Sendable {
     func fetchAllNotes() async throws -> [Note]
     func fetchNote(id: UUID) async throws -> Note?
@@ -44,8 +55,21 @@ actor SwiftDataNoteRepository: NoteRepository {
     }
 
     func createNote(title: String, content: String, notebook: Notebook?) async throws -> Note {
-        let note = Note(title: title, content: content, notebook: notebook)
+        let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
+        guard !trimmedTitle.isEmpty else {
+            throw NoteRepositoryError.invalidTitle("Note title cannot be empty or whitespace-only")
+        }
+
+        let note = Note(title: trimmedTitle, content: content, notebook: notebook)
         modelContext.insert(note)
+
+        // iOS 18 workaround: Append from parent side instead of setting child.notebook
+        if let notebook = notebook {
+            if #available(iOS 18.0, *) {
+                notebook.notes?.append(note)
+            }
+        }
+
         try modelContext.save()
         return note
     }

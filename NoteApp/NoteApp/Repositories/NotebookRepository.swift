@@ -1,6 +1,17 @@
 import Foundation
 import SwiftData
 
+enum NotebookRepositoryError: LocalizedError {
+    case invalidName(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidName(let message):
+            return message
+        }
+    }
+}
+
 protocol NotebookRepository: Sendable {
     func fetchAllNotebooks() async throws -> [Notebook]
     func fetchNotebook(id: UUID) async throws -> Notebook?
@@ -50,7 +61,12 @@ actor SwiftDataNotebookRepository: NotebookRepository {
     }
 
     func createNotebook(name: String, parent: Notebook?) async throws -> Notebook {
-        let notebook = Notebook(name: name, parent: parent)
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else {
+            throw NotebookRepositoryError.invalidName("Notebook name cannot be empty or whitespace-only")
+        }
+
+        let notebook = Notebook(name: trimmedName, parent: parent)
         modelContext.insert(notebook)
 
         // iOS 18 workaround: Append from parent side instead of setting child.parent
