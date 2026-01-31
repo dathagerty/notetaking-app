@@ -16,10 +16,10 @@ struct LibraryFeature {
         // Delete tracking
         var itemPendingDeletion: DeletableItem? = nil
 
-        // Create/edit state
-        @Presents var createNotebookAlert: AlertState<Action.CreateNotebookAlert>?
-        @Presents var createNoteAlert: AlertState<Action.CreateNoteAlert>?
-        @Presents var deleteConfirmation: ConfirmationDialogState<Action.DeleteConfirmation>?
+        // Create/edit state - use sheets for text input instead of alerts
+        @Presents var createNotebookSheet: CreateNotebookSheetState?
+        @Presents var createNoteSheet: CreateNoteSheetState?
+        @Presents var deleteConfirmation: ConfirmationDialogState<DeleteConfirmationAction>?
 
         // Computed properties
         var selectedNotebook: NotebookViewModel? {
@@ -29,6 +29,15 @@ struct LibraryFeature {
         var selectedNote: NoteViewModel? {
             notes.first { $0.id == selectedNoteId }
         }
+    }
+
+    struct CreateNotebookSheetState: Equatable {
+        var notebookName: String = ""
+        var parentId: UUID?
+    }
+
+    struct CreateNoteSheetState: Equatable {
+        var noteTitle: String = ""
     }
 
     enum Action: Equatable {
@@ -41,31 +50,34 @@ struct LibraryFeature {
         case notebookSelected(UUID?)
         case noteSelected(UUID?)
         case navigateToBreadcrumb(UUID?)
+        case breadcrumbPathUpdated([NotebookViewModel])
 
         // Create
         case showCreateNotebook(parentId: UUID?)
         case showCreateNote
-        case createNotebookAlert(PresentationAction<CreateNotebookAlert>)
-        case createNoteAlert(PresentationAction<CreateNoteAlert>)
+        case createNotebookSheet(PresentationAction<CreateNotebookSheetAction>)
+        case createNoteSheet(PresentationAction<CreateNoteSheetAction>)
 
         // Delete
         case showDeleteConfirmation(item: DeletableItem)
-        case deleteConfirmation(PresentationAction<DeleteConfirmation>)
+        case deleteConfirmation(PresentationAction<DeleteConfirmationAction>)
         case deleteCompleted
 
         case errorOccurred(String)
+    }
 
-        enum CreateNotebookAlert: Equatable {
-            case create(name: String, parentId: UUID?)
-        }
+    enum CreateNotebookSheetAction: Equatable {
+        case createButtonTapped
+        case notebookNameChanged(String)
+    }
 
-        enum CreateNoteAlert: Equatable {
-            case create(title: String)
-        }
+    enum CreateNoteSheetAction: Equatable {
+        case createButtonTapped
+        case noteTitleChanged(String)
+    }
 
-        enum DeleteConfirmation: Equatable {
-            case confirmDelete
-        }
+    enum DeleteConfirmationAction: Equatable {
+        case confirmDelete
     }
 
     enum DeletableItem: Equatable {
@@ -122,15 +134,30 @@ struct LibraryFeature {
                             let notebook = try await notebookRepo.fetchNotebook(id: notebookId)
                             guard let notebook = notebook else { return }
 
+                            // Build breadcrumb path by traversing parent relationships
+                            var path: [Notebook] = [notebook]
+                            var current = notebook
+                            while let parent = current.parent {
+                                path.insert(parent, at: 0)
+                                current = parent
+                            }
+                            let pathViewModels = path.map { NotebookViewModel(from: $0) }
+
                             let notes = try await noteRepo.fetchNotes(in: notebook)
-                            let viewModels = notes.map { NoteViewModel(from: $0) }
-                            await send(.notesLoaded(viewModels))
+                            let noteViewModels = notes.map { NoteViewModel(from: $0) }
+
+                            // Send both breadcrumb path and notes
+                            await send(.breadcrumbPathUpdated(pathViewModels))
+                            await send(.notesLoaded(noteViewModels))
                         } catch {
                             await send(.errorOccurred(error.localizedDescription))
                         }
                     }
+                } else {
+                    // When deselecting, clear the breadcrumb path
+                    state.notebookPath = []
+                    return .none
                 }
-                return .none
 
             case .noteSelected(let noteId):
                 state.selectedNoteId = noteId
@@ -140,19 +167,12 @@ struct LibraryFeature {
             case .navigateToBreadcrumb(let notebookId):
                 return .send(.notebookSelected(notebookId))
 
+            case .breadcrumbPathUpdated(let path):
+                state.notebookPath = path
+                return .none
+
             case .showCreateNotebook(let parentId):
-                state.createNotebookAlert = AlertState {
-                    TextState("New Notebook")
-                } actions: {
-                    ButtonState(action: .create(name: "", parentId: parentId)) {
-                        TextState("Create")
-                    }
-                    ButtonState(role: .cancel) {
-                        TextState("Cancel")
-                    }
-                } message: {
-                    TextState("Enter notebook name")
-                }
+                state.createNotebookSheet = CreateNotebookSheetState(parentId: parentId)
                 return .none
 
             case .showCreateNote:
@@ -160,22 +180,18 @@ struct LibraryFeature {
                     state.errorMessage = "Select a notebook first"
                     return .none
                 }
-                state.createNoteAlert = AlertState {
-                    TextState("New Note")
-                } actions: {
-                    ButtonState(action: .create(title: "")) {
-                        TextState("Create")
-                    }
-                    ButtonState(role: .cancel) {
-                        TextState("Cancel")
-                    }
-                } message: {
-                    TextState("Enter note title")
-                }
+                state.createNoteSheet = CreateNoteSheetState()
                 return .none
 
-            case .createNotebookAlert(.presented(.create(let name, let parentId))):
-                guard !name.isEmpty else { return .none }
+            case .createNotebookSheet(.presented(.createButtonTapped)):
+                guard let sheet = state.createNotebookSheet else { return .none }
+                let name = sheet.notebookName.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else {
+                    state.errorMessage = "Notebook name cannot be empty"
+                    return .none
+                }
+                let parentId = sheet.parentId
+                state.createNotebookSheet = nil
                 return .run { send in
                     do {
                         let parent = if let parentId = parentId {
@@ -190,8 +206,15 @@ struct LibraryFeature {
                     }
                 }
 
-            case .createNoteAlert(.presented(.create(let title))):
+            case .createNotebookSheet(.presented(.notebookNameChanged(let name))):
+                state.createNotebookSheet?.notebookName = name
+                return .none
+
+            case .createNoteSheet(.presented(.createButtonTapped)):
+                guard let sheet = state.createNoteSheet else { return .none }
+                let title = sheet.noteTitle.trimmingCharacters(in: .whitespaces)
                 guard let notebookId = state.selectedNotebookId else { return .none }
+                state.createNoteSheet = nil
                 return .run { send in
                     do {
                         let notebook = try await notebookRepo.fetchNotebook(id: notebookId)
@@ -208,8 +231,14 @@ struct LibraryFeature {
                     }
                 }
 
-            case .createNotebookAlert, .createNoteAlert:
+            case .createNoteSheet(.presented(.noteTitleChanged(let title))):
+                state.createNoteSheet?.noteTitle = title
                 return .none
+
+            case .createNotebookSheet, .createNoteSheet:
+                return .none
+
+            case .deleteConfirmation(.presented(.confirmDelete)):
 
             case .showDeleteConfirmation(let item):
                 state.itemPendingDeletion = item
@@ -272,8 +301,8 @@ struct LibraryFeature {
                 return .none
             }
         }
-        .ifLet(\.$createNotebookAlert, action: \.createNotebookAlert)
-        .ifLet(\.$createNoteAlert, action: \.createNoteAlert)
+        .ifLet(\.$createNotebookSheet, action: \.createNotebookSheet)
+        .ifLet(\.$createNoteSheet, action: \.createNoteSheet)
         .ifLet(\.$deleteConfirmation, action: \.deleteConfirmation)
     }
 }
