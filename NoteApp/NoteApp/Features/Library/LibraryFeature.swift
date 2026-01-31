@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import Foundation
 
+/// LibraryFeature - Functional Core (TCA state management for notebooks and notes)
 @Reducer
 struct LibraryFeature {
     @ObservableState
@@ -17,9 +18,9 @@ struct LibraryFeature {
         var itemPendingDeletion: DeletableItem? = nil
 
         // Create/edit state - use sheets for text input instead of alerts
-        @Presents var createNotebookSheet: CreateNotebookSheetState?
-        @Presents var createNoteSheet: CreateNoteSheetState?
-        @Presents var deleteConfirmation: ConfirmationDialogState<DeleteConfirmationAction>?
+        var createNotebookSheet: CreateNotebookSheetState?
+        var createNoteSheet: CreateNoteSheetState?
+        var deleteConfirmation: ConfirmationDialogState<DeleteConfirmationAction>?
 
         // Computed properties
         var selectedNotebook: NotebookViewModel? {
@@ -299,8 +300,5 @@ struct LibraryFeature {
                 return .none
             }
         }
-        .ifLet(\.$createNotebookSheet, action: \.createNotebookSheet)
-        .ifLet(\.$createNoteSheet, action: \.createNoteSheet)
-        .ifLet(\.$deleteConfirmation, action: \.deleteConfirmation)
     }
 }
