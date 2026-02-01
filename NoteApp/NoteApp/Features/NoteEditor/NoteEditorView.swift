@@ -2,7 +2,7 @@ import SwiftUI
 import ComposableArchitecture
 import PencilKit
 
-// FCIS: Imperative Shell (view layer) displaying note editor with canvas and controls
+// FCIS: Imperative Shell (view layer with gesture handling for navigation visibility) displaying note editor with canvas and controls
 struct NoteEditorView: View {
     @Bindable var store: StoreOf<NoteEditorFeature>
 
@@ -89,7 +89,7 @@ struct NoteEditorView: View {
     NoteEditorView(
         store: Store(
             initialState: NoteEditorFeature.State(
-                noteId: UUID(),
+                noteId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                 noteTitle: "Test Note",
                 drawing: PKDrawing()
             ),

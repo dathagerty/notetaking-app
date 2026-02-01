@@ -195,6 +195,10 @@ struct LibraryFeatureTests {
 
         await store.send(.noteSelected(noteId)) { state in
             state.selectedNoteId = noteId
+            // Verify noteEditor state is properly initialized when note is selected
+            #expect(state.noteEditor != nil)
+            #expect(state.noteEditor?.noteId == noteId)
+            #expect(state.noteEditor?.noteTitle == "Test Note")
         }
     }
 

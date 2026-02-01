@@ -15,7 +15,6 @@ struct NoteEditorFeature {
         var hasUnsavedChanges: Bool = false
         var isSaving: Bool = false
         var navigationVisible: Bool = true
-        var showingExitConfirmation: Bool = false
         @Presents var exitConfirmation: ConfirmationDialogState<ExitConfirmation>?
     }
 
@@ -151,6 +150,8 @@ struct NoteEditorFeature {
                 return .none
 
             case .hideNavigationAfterDelay:
+                // Sleep is wrapped in cancellable effect. Task cancellation (e.g., when navigation is
+                // shown again) will interrupt sleep and prevent duplicate hideNavigation actions.
                 return .run { send in
                     try await clock.sleep(for: .seconds(3))
                     await send(.hideNavigation)
@@ -159,6 +160,8 @@ struct NoteEditorFeature {
 
             case .showNavigationTemporarily:
                 state.navigationVisible = true
+                // Sleep is wrapped in cancellable effect. If user taps again before 5s timeout,
+                // the previous effect is cancelled and a new timer starts.
                 return .run { send in
                     try await clock.sleep(for: .seconds(5))
                     await send(.hideNavigation)
