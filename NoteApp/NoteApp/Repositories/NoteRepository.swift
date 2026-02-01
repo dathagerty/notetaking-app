@@ -18,6 +18,7 @@ protocol NoteRepository: Sendable {
     func fetchNotes(in notebook: Notebook) async throws -> [Note]
     func createNote(title: String, content: String, notebook: Notebook?) async throws -> Note
     func updateNote(_ note: Note) async throws
+    func updateDrawingData(noteId: UUID, drawingData: Data) async throws
     func deleteNote(id: UUID) async throws
     func searchNotes(query: String) async throws -> [Note]
 }
@@ -75,6 +76,13 @@ actor SwiftDataNoteRepository: NoteRepository {
     }
 
     func updateNote(_ note: Note) async throws {
+        note.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    func updateDrawingData(noteId: UUID, drawingData: Data) async throws {
+        guard let note = try await fetchNote(id: noteId) else { return }
+        note.drawingData = drawingData
         note.updatedAt = Date()
         try modelContext.save()
     }

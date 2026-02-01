@@ -5,53 +5,68 @@ import Foundation
 // FCIS: Functional Core (reducer logic) with Imperative Shell (TCA integration)
 // Manages note editing state: drawing changes, persistence, and exit confirmation
 
-struct NoteEditorFeature: Reducer {
+
+
+@Reducer
+struct NoteEditorFeature {
     @ObservableState
     struct State: Equatable {
-        var note: Note
+        var noteId: UUID
+        var noteTitle: String
         var drawing: PKDrawing
         var hasUnsavedChanges: Bool = false
         var isSaving: Bool = false
-        var saveError: String?
-        @Presents var exitConfirmation: ConfirmationDialogState<Action.ExitConfirmation>?
+        @Presents var exitConfirmation: ConfirmationDialogState<ExitConfirmation>?
     }
 
-    enum Action: Equatable {
+    @CasePathable
+    enum Delegate: Equatable, Sendable {
+        case closeRequested
+    }
+
+    @CasePathable
+    enum ExitConfirmation: Equatable, Sendable {
+        case confirmExit
+        case cancelExit
+    }
+
+    @CasePathable
+    enum Action {
         case onAppear
+        case drawingLoaded(PKDrawing)
         case drawingChanged(PKDrawing)
         case saveDrawing
         case drawingSaved
         case saveFailed(String)
         case closeButtonTapped
-        case exitConfirmation(PresentationAction<Action.ExitConfirmation>)
-
-        enum ExitConfirmation: Equatable {
-            case confirmExit
-            case cancelExit
-        }
+        case exitConfirmation(PresentationAction<ExitConfirmation>)
+        case delegate(Delegate)
     }
 
     @Dependency(\.noteRepository) var noteRepo
     @Dependency(\.continuousClock) var clock
 
-    nonisolated private enum CancelID: Hashable, Sendable { case save }
-
-    var body: some ReducerOf<Self> {
+    var body: some Reducer<State, Action> {
         Reduce { state, action in
             switch action {
             case .onAppear:
-                // Load existing drawing if available
-                if let data = state.note.drawingData {
+                let noteId = state.noteId
+                return .run { send in
                     do {
-                        // Use PKDrawing's native deserialization
-                        let drawing = try PKDrawing(data: data)
-                        state.drawing = drawing
+                        if let note = try await noteRepo.fetchNote(id: noteId),
+                           let drawingData = note.drawingData {
+                            let drawing = try PKDrawing(data: drawingData)
+                            await send(.drawingLoaded(drawing))
+                        } else {
+                            await send(.drawingLoaded(PKDrawing()))
+                        }
                     } catch {
-                        state.drawing = PKDrawing()
+                        await send(.drawingLoaded(PKDrawing()))
                     }
-                } else {
-                    state.drawing = PKDrawing()
                 }
+
+            case .drawingLoaded(let drawing):
+                state.drawing = drawing
                 return .none
 
             case .drawingChanged(let newDrawing):
@@ -63,26 +78,21 @@ struct NoteEditorFeature: Reducer {
                     try await clock.sleep(for: .seconds(2))
                     await send(.saveDrawing)
                 }
-                .cancellable(id: CancelID.save, cancelInFlight: true)
+                .cancellable(id: "NoteEditorSave", cancelInFlight: true)
 
             case .saveDrawing:
                 guard state.hasUnsavedChanges else { return .none }
                 state.isSaving = true
-                state.saveError = nil
 
-                let drawing = state.drawing
-                let note = state.note
+                let noteId = state.noteId
+                let drawingData = state.drawing.dataRepresentation()
 
                 return .run { send in
                     do {
-                        // Use PKDrawing's native serialization
-                        let data = drawing.dataRepresentation()
-
-                        // Update note via repository
-                        note.drawingData = data
-                        note.updatedAt = Date()
-                        try await noteRepo.updateNote(note)
-
+                        try await noteRepo.updateDrawingData(
+                            noteId: noteId,
+                            drawingData: drawingData
+                        )
                         await send(.drawingSaved)
                     } catch {
                         await send(.saveFailed(error.localizedDescription))
@@ -92,17 +102,16 @@ struct NoteEditorFeature: Reducer {
             case .drawingSaved:
                 state.hasUnsavedChanges = false
                 state.isSaving = false
-                state.saveError = nil
-                return .none
+                return .cancel(id: "NoteEditorRetry")
 
-            case .saveFailed(let error):
+            case .saveFailed:
                 state.isSaving = false
-                state.saveError = error
                 // Retry save automatically after 5 seconds
                 return .run { send in
                     try await clock.sleep(for: .seconds(5))
                     await send(.saveDrawing)
                 }
+                .cancellable(id: "NoteEditorRetry", cancelInFlight: true)
 
             case .closeButtonTapped:
                 if state.hasUnsavedChanges {
@@ -121,13 +130,19 @@ struct NoteEditorFeature: Reducer {
                     return .none
                 }
                 // No unsaved changes, exit immediately
-                return .none
+                return .send(.delegate(.closeRequested))
 
             case .exitConfirmation(.presented(.confirmExit)):
-                // Actually handle exit in parent (LibraryFeature)
+                return .send(.delegate(.closeRequested))
+
+            case .exitConfirmation(.presented(.cancelExit)):
                 return .none
 
-            case .exitConfirmation:
+            case .exitConfirmation(.dismiss):
+                return .none
+
+            case .delegate:
+                // Handled by parent
                 return .none
             }
         }

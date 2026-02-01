@@ -54,11 +54,27 @@ struct NoteEditorView: View {
             store.send(.onAppear)
         }
         .confirmationDialog(
-            $store.scope(
-                state: \.exitConfirmation,
-                action: \.exitConfirmation
-            )
-        )
+            String(state: store.exitConfirmation?.title ?? TextState("")),
+            isPresented: Binding(
+                get: { store.exitConfirmation != nil },
+                set: { if !$0 { store.send(.exitConfirmation(.dismiss)) } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if store.exitConfirmation != nil {
+                Button("Discard Changes", role: .destructive) {
+                    store.send(.exitConfirmation(.presented(.confirmExit)))
+                }
+                Button("Keep Editing", role: .cancel) {
+                    store.send(.exitConfirmation(.presented(.cancelExit)))
+                }
+            }
+        } message: {
+            if let confirmation = store.exitConfirmation,
+               let message = confirmation.message {
+                Text(String(state: message))
+            }
+        }
     }
 }
 
@@ -66,7 +82,8 @@ struct NoteEditorView: View {
     NoteEditorView(
         store: Store(
             initialState: NoteEditorFeature.State(
-                note: Note(title: "Test Note"),
+                noteId: UUID(),
+                noteTitle: "Test Note",
                 drawing: PKDrawing()
             ),
             reducer: { NoteEditorFeature() }
