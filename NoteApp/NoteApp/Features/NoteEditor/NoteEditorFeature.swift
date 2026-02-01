@@ -5,8 +5,6 @@ import Foundation
 // FCIS: Functional Core (reducer logic) with Imperative Shell (TCA integration)
 // Manages note editing state: drawing changes, persistence, and exit confirmation
 
-
-
 @Reducer
 struct NoteEditorFeature {
     @ObservableState
@@ -16,6 +14,8 @@ struct NoteEditorFeature {
         var drawing: PKDrawing
         var hasUnsavedChanges: Bool = false
         var isSaving: Bool = false
+        var navigationVisible: Bool = true
+        var showingExitConfirmation: Bool = false
         @Presents var exitConfirmation: ConfirmationDialogState<ExitConfirmation>?
     }
 
@@ -40,7 +40,16 @@ struct NoteEditorFeature {
         case saveFailed(String)
         case closeButtonTapped
         case exitConfirmation(PresentationAction<ExitConfirmation>)
+        case hideNavigationAfterDelay
+        case showNavigationTemporarily
+        case hideNavigation
+        case gestureDetected(GestureType)
         case delegate(Delegate)
+    }
+
+    enum GestureType {
+        case topEdgeDoubleTap
+        case drawingStarted
     }
 
     @Dependency(\.noteRepository) var noteRepo
@@ -139,6 +148,34 @@ struct NoteEditorFeature {
                 return .none
 
             case .exitConfirmation(.dismiss):
+                return .none
+
+            case .hideNavigationAfterDelay:
+                return .run { send in
+                    try await clock.sleep(for: .seconds(3))
+                    await send(.hideNavigation)
+                }
+                .cancellable(id: "NavigationHide", cancelInFlight: true)
+
+            case .showNavigationTemporarily:
+                state.navigationVisible = true
+                return .run { send in
+                    try await clock.sleep(for: .seconds(5))
+                    await send(.hideNavigation)
+                }
+                .cancellable(id: "NavigationHide", cancelInFlight: true)
+
+            case .hideNavigation:
+                state.navigationVisible = false
+                return .none
+
+            case .gestureDetected(.topEdgeDoubleTap):
+                return .send(.showNavigationTemporarily)
+
+            case .gestureDetected(.drawingStarted):
+                if state.navigationVisible {
+                    return .send(.hideNavigationAfterDelay)
+                }
                 return .none
 
             case .delegate:
