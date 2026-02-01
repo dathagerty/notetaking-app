@@ -13,68 +13,75 @@ struct NoteEditorView: View {
                 drawing: store.drawing,
                 onDrawingChanged: { newDrawing in
                     store.send(.drawingChanged(newDrawing))
+                    store.send(.gestureDetected(.drawingStarted))
                 }
             )
             .ignoresSafeArea()
+            .persistentSystemOverlays(.hidden) // Hide home indicator
 
-            // Minimal navigation bar (will auto-hide in Phase 5)
-            VStack {
-                HStack {
-                    Button {
-                        store.send(.closeButtonTapped)
-                    } label: {
-                        Label("Close", systemImage: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(.primary)
-                            .padding()
+            // Auto-hiding navigation overlay
+            if store.navigationVisible {
+                VStack {
+                    HStack {
+                        Button {
+                            store.send(.closeButtonTapped)
+                        } label: {
+                            Label("Close", systemImage: "xmark.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.primary)
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+
+                        Spacer()
+
+                        if store.isSaving {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Saving...")
+                                    .font(.caption)
+                            }
+                            .padding(8)
                             .background(.ultraThinMaterial)
-                            .clipShape(Circle())
+                            .clipShape(Capsule())
+                        }
                     }
+                    .padding()
 
                     Spacer()
-
-                    if store.isSaving {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Saving...")
-                                .font(.caption)
-                        }
-                        .padding(8)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
-                    }
                 }
-                .padding()
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // Invisible double-tap detection zone at top edge
+            VStack {
+                Color.clear
+                    .frame(height: 60)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        TapGesture(count: 2)
+                            .onEnded {
+                                store.send(.gestureDetected(.topEdgeDoubleTap))
+                            }
+                    )
 
                 Spacer()
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: store.navigationVisible)
         .onAppear {
             store.send(.onAppear)
+            store.send(.hideNavigationAfterDelay)
         }
         .confirmationDialog(
-            String(state: store.exitConfirmation?.title ?? TextState("")),
-            isPresented: Binding(
-                get: { store.exitConfirmation != nil },
-                set: { if !$0 { store.send(.exitConfirmation(.dismiss)) } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if store.exitConfirmation != nil {
-                Button("Discard Changes", role: .destructive) {
-                    store.send(.exitConfirmation(.presented(.confirmExit)))
-                }
-                Button("Keep Editing", role: .cancel) {
-                    store.send(.exitConfirmation(.presented(.cancelExit)))
-                }
-            }
-        } message: {
-            if let confirmation = store.exitConfirmation,
-               let message = confirmation.message {
-                Text(String(state: message))
-            }
-        }
+            $store.scope(
+                state: \.exitConfirmation,
+                action: \.exitConfirmation
+            )
+        )
+        .interactiveDismissDisabled(store.hasUnsavedChanges)
     }
 }
 
