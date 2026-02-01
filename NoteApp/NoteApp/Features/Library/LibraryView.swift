@@ -1,5 +1,6 @@
 import SwiftUI
 import ComposableArchitecture
+import PencilKit
 
 struct LibraryView: View {
     @Bindable var store: StoreOf<LibraryFeature>
@@ -12,26 +13,32 @@ struct LibraryView: View {
             // Content: Notes in selected notebook
             NoteListView(store: store)
         } detail: {
-            // Detail: Selected note (placeholder until Phase 4)
-            if let noteId = store.selectedNoteId,
-               let note = store.notes.first(where: { $0.id == noteId }) {
-                VStack(spacing: 16) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
+            // Detail: Note editor or empty state
+            if let note = store.selectedNote {
+                if let editorStore = store.scope(
+                    state: \.noteEditor,
+                    action: \.noteEditor
+                ) {
+                    NoteEditorView(store: editorStore)
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
 
-                    Text(note.title.isEmpty ? "Untitled" : note.title)
-                        .font(.title2)
-                        .fontWeight(.semibold)
+                        Text(note.title.isEmpty ? "Untitled" : note.title)
+                            .font(.title2)
+                            .fontWeight(.semibold)
 
-                    Text("Editor coming in Phase 4")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        Text("Loading editor...")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
 
-                    Spacer()
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding()
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "doc.badge.ellipsis")
