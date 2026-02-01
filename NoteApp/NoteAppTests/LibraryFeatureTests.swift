@@ -5,6 +5,7 @@
 
 import Testing
 import ComposableArchitecture
+import Foundation
 @testable import NoteApp
 
 struct LibraryFeatureTests {
@@ -102,6 +103,12 @@ struct LibraryFeatureTests {
             }
         }
 
+        func updateDrawingData(noteId: UUID, drawingData: Data) async throws {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+        }
+
         func deleteNote(id: UUID) async throws {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
@@ -133,9 +140,9 @@ struct LibraryFeatureTests {
 
         await store.send(.onAppear)
         await store.receive(\.refreshData)
-        await store.receive(\.notebooksLoaded) { notebooks in
-            #expect(notebooks.count == 1)
-            #expect(notebooks.first?.name == "Test Notebook")
+        await store.receive(\.notebooksLoaded) { state in
+            #expect(state.notebooks.count == 1)
+            #expect(state.notebooks.first?.name == "Test Notebook")
         }
     }
 
@@ -165,18 +172,18 @@ struct LibraryFeatureTests {
         }
 
         // Should receive breadcrumb path update and notes loaded
-        await store.receive(\.breadcrumbPathUpdated) { path in
-            #expect(path.count == 2)
+        await store.receive(\.breadcrumbPathUpdated) { state in
+            #expect(state.notebookPath.count == 2)
         }
 
-        await store.receive(\.notesLoaded) { notes in
-            #expect(notes.count == 1)
-            #expect(notes.first?.title == "Test Note")
+        await store.receive(\.notesLoaded) { state in
+            #expect(state.notes.count == 1)
+            #expect(state.notes.first?.title == "Test Note")
         }
     }
 
     @Test func noteSelected_updatesSelectedNoteId() async {
-        let note = Note(title: "Test Note", content: "Content", notebook: Notebook())
+        let note = Note(title: "Test Note", content: "Content", notebook: Notebook(name: "Test"))
         let noteId = note.id
 
         let store = TestStore(
@@ -210,7 +217,7 @@ struct LibraryFeatureTests {
 
         let store = TestStore(
             initialState: LibraryFeature.State(
-                createNotebookSheet: LibraryFeature.CreateNotebookSheetState(
+                createNotebookSheet: CreateNotebookSheetState(
                     notebookName: "New Notebook",
                     parentId: nil
                 )
@@ -221,7 +228,7 @@ struct LibraryFeatureTests {
             $0.noteRepository = mockNoteRepo
         }
 
-        await store.send(.createNotebookSheetAction(.createButtonTapped)) { state in
+        await store.send(.createNotebookSheet(.createButtonTapped)) { state in
             state.createNotebookSheet = nil
         }
 
@@ -232,7 +239,7 @@ struct LibraryFeatureTests {
     @Test func createNotebookSheet_rejectsEmptyName() async {
         let store = TestStore(
             initialState: LibraryFeature.State(
-                createNotebookSheet: LibraryFeature.CreateNotebookSheetState(
+                createNotebookSheet: CreateNotebookSheetState(
                     notebookName: "   ",
                     parentId: nil
                 )
@@ -240,7 +247,7 @@ struct LibraryFeatureTests {
             reducer: { LibraryFeature() }
         )
 
-        await store.send(.createNotebookSheetAction(.createButtonTapped)) { state in
+        await store.send(.createNotebookSheet(.createButtonTapped)) { state in
             #expect(state.errorMessage == "Notebook name cannot be empty")
         }
     }
@@ -270,9 +277,8 @@ struct LibraryFeatureTests {
     }
 
     @Test func createNoteSheet_createsNoteWithTitle() async {
-        let notebookId = UUID()
         let notebook = Notebook(name: "Test")
-        notebook.id = notebookId
+        let notebookId = notebook.id
 
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
         let mockNoteRepo = MockNoteRepository()
@@ -280,7 +286,7 @@ struct LibraryFeatureTests {
         let store = TestStore(
             initialState: LibraryFeature.State(
                 selectedNotebookId: notebookId,
-                createNoteSheet: LibraryFeature.CreateNoteSheetState(noteTitle: "New Note")
+                createNoteSheet: CreateNoteSheetState(noteTitle: "New Note")
             ),
             reducer: { LibraryFeature() }
         ) {
@@ -288,7 +294,7 @@ struct LibraryFeatureTests {
             $0.noteRepository = mockNoteRepo
         }
 
-        await store.send(.createNoteSheetAction(.createButtonTapped)) { state in
+        await store.send(.createNoteSheet(.createButtonTapped)) { state in
             state.createNoteSheet = nil
         }
 
@@ -297,9 +303,8 @@ struct LibraryFeatureTests {
     }
 
     @Test func deleteConfirmation_deletesNotebook() async {
-        let notebookId = UUID()
         let notebook = Notebook(name: "To Delete")
-        notebook.id = notebookId
+        let notebookId = notebook.id
 
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
         let mockNoteRepo = MockNoteRepository()
@@ -307,7 +312,7 @@ struct LibraryFeatureTests {
         let store = TestStore(
             initialState: LibraryFeature.State(
                 notebooks: [NotebookViewModel(from: notebook)],
-                itemPendingDeletion: .notebook(notebookId),
+                itemPendingDeletion: DeletableItem.notebook(notebookId),
                 deleteConfirmation: ConfirmationDialogState(
                     title: { TextState("Delete?") },
                     actions: {
@@ -337,10 +342,9 @@ struct LibraryFeatureTests {
     }
 
     @Test func deleteConfirmation_deletesNote() async {
-        let noteId = UUID()
         let notebook = Notebook(name: "Test")
         let note = Note(title: "To Delete", content: "", notebook: notebook)
-        note.id = noteId
+        let noteId = note.id
 
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
         let mockNoteRepo = MockNoteRepository(mockNotes: [note])
@@ -348,7 +352,7 @@ struct LibraryFeatureTests {
         let store = TestStore(
             initialState: LibraryFeature.State(
                 notes: [NoteViewModel(from: note)],
-                itemPendingDeletion: .note(noteId),
+                itemPendingDeletion: DeletableItem.note(noteId),
                 deleteConfirmation: ConfirmationDialogState(
                     title: { TextState("Delete?") },
                     actions: {

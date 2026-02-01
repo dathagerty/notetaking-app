@@ -17,7 +17,7 @@ struct AppFeature {
         var library: LibraryFeature.State = .init()
     }
 
-    enum Action: Equatable {
+    enum Action {
         case onAppear
         case focusModeToggled
         case networkStatusChanged(Bool)

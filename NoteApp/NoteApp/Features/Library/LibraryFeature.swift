@@ -2,8 +2,43 @@ import ComposableArchitecture
 import Foundation
 import PencilKit
 
+// Types used by LibraryFeature - defined outside to avoid circular references
+struct CreateNotebookSheetState: Equatable, Identifiable {
+    var id: UUID = UUID()
+    var notebookName: String = ""
+    var parentId: UUID?
+}
+
+struct CreateNoteSheetState: Equatable, Identifiable {
+    var id: UUID = UUID()
+    var noteTitle: String = ""
+}
+
+enum DeletableItem: Equatable, Sendable {
+    case notebook(UUID)
+    case note(UUID)
+}
+
+@CasePathable
+enum LibraryDeleteAlert: Equatable, Sendable {
+    case confirmDelete
+}
+
+@CasePathable
+enum CreateNotebookSheetAction: Equatable, Sendable {
+    case createButtonTapped
+    case notebookNameChanged(String)
+}
+
+@CasePathable
+enum CreateNoteSheetAction: Equatable, Sendable {
+    case createButtonTapped
+    case noteTitleChanged(String)
+}
+
 // FCIS: Functional Core (TCA state management) for notebooks and notes navigation
-struct LibraryFeature: Reducer {
+@Reducer
+struct LibraryFeature {
     @ObservableState
     struct State: Equatable {
         var notebooks: [NotebookViewModel] = []
@@ -20,7 +55,7 @@ struct LibraryFeature: Reducer {
         // Create/edit state - use sheets for text input instead of alerts
         var createNotebookSheet: CreateNotebookSheetState?
         var createNoteSheet: CreateNoteSheetState?
-        var deleteConfirmation: ConfirmationDialogState<DeleteConfirmationAction>?
+        @Presents var deleteConfirmation: ConfirmationDialogState<LibraryDeleteAlert>?
 
         // Note editor state
         @Presents var noteEditor: NoteEditorFeature.State?
@@ -35,16 +70,8 @@ struct LibraryFeature: Reducer {
         }
     }
 
-    struct CreateNotebookSheetState: Equatable {
-        var notebookName: String = ""
-        var parentId: UUID?
-    }
-
-    struct CreateNoteSheetState: Equatable {
-        var noteTitle: String = ""
-    }
-
-    enum Action: Equatable {
+    @CasePathable
+    enum Action {
         case onAppear
         case refreshData
         case notebooksLoaded([NotebookViewModel])
@@ -59,45 +86,25 @@ struct LibraryFeature: Reducer {
         // Create
         case showCreateNotebook(parentId: UUID?)
         case showCreateNote
-        case createNotebookSheet(PresentationAction<CreateNotebookSheetAction>)
-        case createNoteSheet(PresentationAction<CreateNoteSheetAction>)
+        case createNotebookSheet(CreateNotebookSheetAction)
+        case createNoteSheet(CreateNoteSheetAction)
 
         // Delete
         case showDeleteConfirmation(item: DeletableItem)
-        case deleteConfirmation(PresentationAction<DeleteConfirmationAction>)
+        case deleteConfirmation(PresentationAction<LibraryDeleteAlert>)
         case deleteCompleted
 
         // Note editor
         case noteEditor(PresentationAction<NoteEditorFeature.Action>)
-        case editorStateCreated(NoteEditorFeature.State)
 
         case errorOccurred(String)
-    }
-
-    enum CreateNotebookSheetAction: Equatable {
-        case createButtonTapped
-        case notebookNameChanged(String)
-    }
-
-    enum CreateNoteSheetAction: Equatable {
-        case createButtonTapped
-        case noteTitleChanged(String)
-    }
-
-    enum DeleteConfirmationAction: Equatable {
-        case confirmDelete
-    }
-
-    enum DeletableItem: Equatable {
-        case notebook(UUID)
-        case note(UUID)
     }
 
     @Dependency(\.notebookRepository) var notebookRepo
     @Dependency(\.noteRepository) var noteRepo
 
-    var body: some ReducerOf<Self> {
-        Reduce { state, action in
+    var body: some Reducer<State, Action> {
+        Reduce { state, action -> Effect<Action> in
             switch action {
             case .onAppear:
                 return .run { send in
@@ -169,27 +176,16 @@ struct LibraryFeature: Reducer {
 
             case .noteSelected(let noteId):
                 state.selectedNoteId = noteId
-                state.noteEditor = nil // Clear previous editor state
-                if let noteId = noteId {
-                    return .run { send in
-                        do {
-                            let note = try await noteRepo.fetchNote(id: noteId)
-                            guard let note = note else { return }
-                            // Create editor state and send it
-                            let editorState = NoteEditorFeature.State(
-                                note: note,
-                                drawing: PKDrawing()
-                            )
-                            await send(.editorStateCreated(editorState))
-                        } catch {
-                            await send(.errorOccurred(error.localizedDescription))
-                        }
-                    }
+                if let noteId = noteId,
+                   let note = state.notes.first(where: { $0.id == noteId }) {
+                    state.noteEditor = NoteEditorFeature.State(
+                        noteId: noteId,
+                        noteTitle: note.title,
+                        drawing: PKDrawing()
+                    )
+                } else {
+                    state.noteEditor = nil
                 }
-                return .none
-
-            case .editorStateCreated(let editorState):
-                state.noteEditor = editorState
                 return .none
 
             case .navigateToBreadcrumb(let notebookId):
@@ -211,7 +207,7 @@ struct LibraryFeature: Reducer {
                 state.createNoteSheet = CreateNoteSheetState()
                 return .none
 
-            case .createNotebookSheet(.presented(.createButtonTapped)):
+            case .createNotebookSheet(.createButtonTapped):
                 guard let sheet = state.createNotebookSheet else { return .none }
                 let name = sheet.notebookName.trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty else {
@@ -222,10 +218,9 @@ struct LibraryFeature: Reducer {
                 state.createNotebookSheet = nil
                 return .run { send in
                     do {
-                        let parent = if let parentId = parentId {
-                            try await notebookRepo.fetchNotebook(id: parentId)
-                        } else {
-                            nil
+                        var parent: Notebook? = nil
+                        if let parentId = parentId {
+                            parent = try await notebookRepo.fetchNotebook(id: parentId)
                         }
                         _ = try await notebookRepo.createNotebook(name: name, parent: parent)
                         await send(.refreshData)
@@ -234,11 +229,11 @@ struct LibraryFeature: Reducer {
                     }
                 }
 
-            case .createNotebookSheet(.presented(.notebookNameChanged(let name))):
+            case .createNotebookSheet(.notebookNameChanged(let name)):
                 state.createNotebookSheet?.notebookName = name
                 return .none
 
-            case .createNoteSheet(.presented(.createButtonTapped)):
+            case .createNoteSheet(.createButtonTapped):
                 guard let sheet = state.createNoteSheet else { return .none }
                 let title = sheet.noteTitle.trimmingCharacters(in: .whitespaces)
                 guard let notebookId = state.selectedNotebookId else { return .none }
@@ -259,15 +254,27 @@ struct LibraryFeature: Reducer {
                     }
                 }
 
-            case .createNoteSheet(.presented(.noteTitleChanged(let title))):
+            case .createNoteSheet(.noteTitleChanged(let title)):
                 state.createNoteSheet?.noteTitle = title
-                return .none
-
-            case .createNotebookSheet, .createNoteSheet:
                 return .none
 
             case .showDeleteConfirmation(let item):
                 state.itemPendingDeletion = item
+                let messageText: String
+                switch item {
+                case .notebook(let notebookId):
+                    if let notebook = state.notebooks.first(where: { $0.id == notebookId }) {
+                        messageText = "Delete '\(notebook.name)' and all its contents?"
+                    } else {
+                        messageText = "Delete this notebook and all its contents?"
+                    }
+                case .note(let noteId):
+                    if let note = state.notes.first(where: { $0.id == noteId }) {
+                        messageText = "Delete '\(note.title)'?"
+                    } else {
+                        messageText = "Delete this note?"
+                    }
+                }
                 state.deleteConfirmation = ConfirmationDialogState {
                     TextState("Delete?")
                 } actions: {
@@ -278,20 +285,7 @@ struct LibraryFeature: Reducer {
                         TextState("Cancel")
                     }
                 } message: {
-                    switch item {
-                    case .notebook(let notebookId):
-                        if let notebook = state.notebooks.first(where: { $0.id == notebookId }) {
-                            TextState("Delete '\(notebook.name)' and all its contents?")
-                        } else {
-                            TextState("Delete this notebook and all its contents?")
-                        }
-                    case .note(let noteId):
-                        if let note = state.notes.first(where: { $0.id == noteId }) {
-                            TextState("Delete '\(note.title)'?")
-                        } else {
-                            TextState("Delete this note?")
-                        }
-                    }
+                    TextState(messageText)
                 }
                 return .none
 
@@ -312,7 +306,8 @@ struct LibraryFeature: Reducer {
                     }
                 }
 
-            case .deleteConfirmation:
+            case .deleteConfirmation(.dismiss):
+                state.itemPendingDeletion = nil
                 return .none
 
             case .deleteCompleted:
@@ -326,10 +321,16 @@ struct LibraryFeature: Reducer {
                 state.isLoading = false
                 return .none
 
+            case .noteEditor(.presented(.delegate(.closeRequested))):
+                state.noteEditor = nil
+                state.selectedNoteId = nil
+                return .none
+
             case .noteEditor:
                 return .none
             }
         }
+        .ifLet(\.$deleteConfirmation, action: \.deleteConfirmation)
         .ifLet(\.$noteEditor, action: \.noteEditor) {
             NoteEditorFeature()
         }
