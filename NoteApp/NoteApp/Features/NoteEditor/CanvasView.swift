@@ -1,8 +1,9 @@
 import SwiftUI
 import PencilKit
 
+// FCIS: Imperative Shell (UIKit bridge) for PencilKit canvas drawing
 struct CanvasView: UIViewRepresentable {
-    @Binding var drawing: PKDrawing
+    let drawing: PKDrawing
     let onDrawingChanged: (PKDrawing) -> Void
 
     func makeUIView(context: Context) -> PKCanvasView {
@@ -13,11 +14,14 @@ struct CanvasView: UIViewRepresentable {
         canvasView.drawingPolicy = .anyInput // Allow Apple Pencil and finger
         canvasView.delegate = context.coordinator
 
-        // Show tool picker
+        // Show tool picker with strong reference to prevent deallocation
         let toolPicker = PKToolPicker()
         toolPicker.setVisible(true, forFirstResponder: canvasView)
         toolPicker.addObserver(canvasView)
         canvasView.becomeFirstResponder()
+
+        // Store tool picker in coordinator to retain it
+        context.coordinator.toolPicker = toolPicker
 
         return canvasView
     }

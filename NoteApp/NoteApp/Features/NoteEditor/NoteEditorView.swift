@@ -2,6 +2,7 @@ import SwiftUI
 import ComposableArchitecture
 import PencilKit
 
+// FCIS: Imperative Shell (view layer) displaying note editor with canvas and controls
 struct NoteEditorView: View {
     @Bindable var store: StoreOf<NoteEditorFeature>
 
@@ -9,7 +10,7 @@ struct NoteEditorView: View {
         ZStack {
             // Full-screen canvas
             CanvasView(
-                drawing: $store.drawing,
+                drawing: store.drawing,
                 onDrawingChanged: { newDrawing in
                     store.send(.drawingChanged(newDrawing))
                 }
