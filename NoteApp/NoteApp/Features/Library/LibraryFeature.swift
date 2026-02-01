@@ -1,5 +1,6 @@
 import ComposableArchitecture
 import Foundation
+import PencilKit
 
 /// LibraryFeature - Functional Core (TCA state management for notebooks and notes)
 @Reducer
@@ -21,6 +22,9 @@ struct LibraryFeature {
         var createNotebookSheet: CreateNotebookSheetState?
         var createNoteSheet: CreateNoteSheetState?
         var deleteConfirmation: ConfirmationDialogState<DeleteConfirmationAction>?
+
+        // Note editor state
+        @Presents var noteEditor: NoteEditorFeature.State?
 
         // Computed properties
         var selectedNotebook: NotebookViewModel? {
@@ -63,6 +67,10 @@ struct LibraryFeature {
         case showDeleteConfirmation(item: DeletableItem)
         case deleteConfirmation(PresentationAction<DeleteConfirmationAction>)
         case deleteCompleted
+
+        // Note editor
+        case noteEditor(PresentationAction<NoteEditorFeature.Action>)
+        case editorStateCreated(NoteEditorFeature.State)
 
         case errorOccurred(String)
     }
@@ -162,7 +170,27 @@ struct LibraryFeature {
 
             case .noteSelected(let noteId):
                 state.selectedNoteId = noteId
-                // Phase 4 will handle navigation to editor
+                state.noteEditor = nil // Clear previous editor state
+                if let noteId = noteId {
+                    return .run { send in
+                        do {
+                            let note = try await noteRepo.fetchNote(id: noteId)
+                            guard let note = note else { return }
+                            // Create editor state and send it
+                            let editorState = NoteEditorFeature.State(
+                                note: note,
+                                drawing: PKDrawing()
+                            )
+                            await send(.editorStateCreated(editorState))
+                        } catch {
+                            await send(.errorOccurred(error.localizedDescription))
+                        }
+                    }
+                }
+                return .none
+
+            case .editorStateCreated(let editorState):
+                state.noteEditor = editorState
                 return .none
 
             case .navigateToBreadcrumb(let notebookId):
@@ -298,7 +326,13 @@ struct LibraryFeature {
                 state.errorMessage = message
                 state.isLoading = false
                 return .none
+
+            case .noteEditor:
+                return .none
             }
+        }
+        .ifLet(\.$noteEditor, action: \.noteEditor) {
+            NoteEditorFeature()
         }
     }
 }
