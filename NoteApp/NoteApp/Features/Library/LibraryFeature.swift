@@ -2,9 +2,8 @@ import ComposableArchitecture
 import Foundation
 import PencilKit
 
-/// LibraryFeature - Functional Core (TCA state management for notebooks and notes)
-@Reducer
-struct LibraryFeature {
+// FCIS: Functional Core (TCA state management) for notebooks and notes navigation
+struct LibraryFeature: Reducer {
     @ObservableState
     struct State: Equatable {
         var notebooks: [NotebookViewModel] = []

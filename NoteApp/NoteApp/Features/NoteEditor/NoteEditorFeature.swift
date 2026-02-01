@@ -2,14 +2,17 @@ import ComposableArchitecture
 import PencilKit
 import Foundation
 
-@Reducer
-struct NoteEditorFeature {
+// FCIS: Functional Core (reducer logic) with Imperative Shell (TCA integration)
+// Manages note editing state: drawing changes, persistence, and exit confirmation
+
+struct NoteEditorFeature: Reducer {
     @ObservableState
     struct State: Equatable {
         var note: Note
         var drawing: PKDrawing
         var hasUnsavedChanges: Bool = false
         var isSaving: Bool = false
+        var saveError: String?
         @Presents var exitConfirmation: ConfirmationDialogState<Action.ExitConfirmation>?
     }
 
@@ -20,7 +23,7 @@ struct NoteEditorFeature {
         case drawingSaved
         case saveFailed(String)
         case closeButtonTapped
-        case exitConfirmation(PresentationAction<ExitConfirmation>)
+        case exitConfirmation(PresentationAction<Action.ExitConfirmation>)
 
         enum ExitConfirmation: Equatable {
             case confirmExit
@@ -31,7 +34,7 @@ struct NoteEditorFeature {
     @Dependency(\.noteRepository) var noteRepo
     @Dependency(\.continuousClock) var clock
 
-    enum CancelID { case save }
+    nonisolated private enum CancelID: Hashable, Sendable { case save }
 
     var body: some ReducerOf<Self> {
         Reduce { state, action in
@@ -65,6 +68,7 @@ struct NoteEditorFeature {
             case .saveDrawing:
                 guard state.hasUnsavedChanges else { return .none }
                 state.isSaving = true
+                state.saveError = nil
 
                 let drawing = state.drawing
                 let note = state.note
@@ -88,11 +92,12 @@ struct NoteEditorFeature {
             case .drawingSaved:
                 state.hasUnsavedChanges = false
                 state.isSaving = false
+                state.saveError = nil
                 return .none
 
             case .saveFailed(let error):
                 state.isSaving = false
-                print("Save failed: \(error)")
+                state.saveError = error
                 // Retry save automatically after 5 seconds
                 return .run { send in
                     try await clock.sleep(for: .seconds(5))
