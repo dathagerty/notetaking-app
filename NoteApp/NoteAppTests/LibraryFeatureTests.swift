@@ -561,4 +561,75 @@ struct LibraryFeatureTests {
             #expect(state.errorMessage?.contains("no drawing") ?? false)
         }
     }
+
+    @Test func exportNote_createsExportFeatureState() async {
+        let drawing = PKDrawing()
+        let drawingData = drawing.dataRepresentation()
+
+        let note = Note(title: "Export Test")
+        note.drawingData = drawingData
+
+        let notebook = Notebook(name: "Test Notebook")
+        notebook.notes = [note]
+
+        let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
+        let mockNoteRepo = MockNoteRepository(mockNotes: [note])
+        let mockTagRepo = MockTagRepository(mockTags: [])
+
+        let store = TestStore(
+            initialState: LibraryFeature.State(
+                notebooks: [NotebookViewModel(from: notebook)],
+                selectedNotebookId: notebook.id
+            ),
+            reducer: { LibraryFeature() }
+        ) {
+            $0.notebookRepository = mockNotebookRepo
+            $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
+        }
+
+        await store.send(.exportNote(noteId: note.id)) { state in
+            state.exportFeature = ExportFeature.State(
+                noteIds: [note.id],
+                exportFormat: .pdf,
+                isExporting: false
+            )
+        }
+    }
+
+    @Test func shareSheetDismissed_closesExportFeature() async {
+        let drawing = PKDrawing()
+        let drawingData = drawing.dataRepresentation()
+
+        let note = Note(title: "Export Test")
+        note.drawingData = drawingData
+
+        let notebook = Notebook(name: "Test Notebook")
+        notebook.notes = [note]
+
+        let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
+        let mockNoteRepo = MockNoteRepository(mockNotes: [note])
+        let mockTagRepo = MockTagRepository(mockTags: [])
+
+        let store = TestStore(
+            initialState: LibraryFeature.State(
+                notebooks: [NotebookViewModel(from: notebook)],
+                selectedNotebookId: notebook.id,
+                exportFeature: ExportFeature.State(
+                    noteIds: [note.id],
+                    exportFormat: .pdf,
+                    isExporting: false
+                )
+            ),
+            reducer: { LibraryFeature() }
+        ) {
+            $0.notebookRepository = mockNotebookRepo
+            $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
+        }
+
+        await store.send(.exportFeature(.presented(.shareSheet(.dismiss)))) { state in
+            state.exportFeature = nil
+        }
+    }
 }
