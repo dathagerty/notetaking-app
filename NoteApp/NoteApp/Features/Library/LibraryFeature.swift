@@ -470,7 +470,6 @@ struct LibraryFeature {
 
             case .handwritingConverted(let noteId, let text):
                 state.convertingNoteId = nil
-                print("Converted note \(noteId): \(text.prefix(100))...")
                 return .send(.refreshData)
 
             case .conversionFailed(let error):

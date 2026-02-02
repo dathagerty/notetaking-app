@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 
+// FCIS: Imperative Shell (UIKit bridge) for UIActivityViewController integration
 struct ShareSheet: UIViewControllerRepresentable {
     let url: URL
     let onDismiss: () -> Void

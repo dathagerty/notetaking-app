@@ -2,6 +2,7 @@ import Vision
 import PencilKit
 import UIKit
 
+// FCIS: Imperative Shell (Vision framework bridge) for handwriting-to-text conversion
 actor HandwritingRecognitionService {
     func recognizeText(from drawing: PKDrawing) async throws -> String {
         // Render drawing to image
@@ -38,5 +39,4 @@ actor HandwritingRecognitionService {
 
 enum RecognitionError: Error {
     case invalidImage
-    case recognitionFailed
 }

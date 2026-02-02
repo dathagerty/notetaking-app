@@ -4,6 +4,7 @@ import PDFKit
 import UIKit
 import Foundation
 
+// FCIS: Functional Core (TCA reducer) for PDF/image export with presentation state
 @Reducer
 struct ExportFeature {
     @ObservableState
@@ -68,7 +69,6 @@ struct ExportFeature {
 
             case .exportFailed(let error):
                 state.isExporting = false
-                print("Export failed: \(error)")
                 return .none
 
             case .shareSheet:
@@ -96,8 +96,11 @@ struct ExportFeature {
         case .pdf:
             let pdfURL = tempDir.appendingPathComponent("\(fileName).pdf")
             let pdfDocument = PDFDocument()
-            let page = PDFPage(image: drawing.image(from: drawing.bounds, scale: 2.0))
-            pdfDocument.insert(page!, at: 0)
+            let image = drawing.image(from: drawing.bounds, scale: 2.0)
+            guard let page = PDFPage(image: image) else {
+                throw ExportError.invalidDrawing
+            }
+            pdfDocument.insert(page, at: 0)
             pdfDocument.write(to: pdfURL)
 
             return pdfURL
@@ -106,9 +109,10 @@ struct ExportFeature {
             let imageURL = tempDir.appendingPathComponent("\(fileName).png")
             let image = drawing.image(from: drawing.bounds, scale: 2.0)
 
-            if let data = image.pngData() {
-                try data.write(to: imageURL)
+            guard let data = image.pngData() else {
+                throw ExportError.invalidDrawing
             }
+            try data.write(to: imageURL)
 
             return imageURL
         }
@@ -119,20 +123,15 @@ struct ExportFeature {
         let exportDir = tempDir.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: exportDir, withIntermediateDirectories: true)
 
-        // Collect exported files
-        var exportedFiles: [URL] = []
-
         for noteId in noteIds {
             do {
                 let url = try await exportSingleNote(noteId: noteId, format: format)
-                exportedFiles.append(url)
 
                 let fileName = url.lastPathComponent
                 let destination = exportDir.appendingPathComponent(fileName)
                 try FileManager.default.copyItem(at: url, to: destination)
             } catch {
                 // Skip notes that fail to export
-                print("Failed to export note \(noteId): \(error)")
                 continue
             }
         }

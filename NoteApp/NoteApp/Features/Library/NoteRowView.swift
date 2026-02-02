@@ -2,7 +2,7 @@ import SwiftUI
 
 struct NoteRowView: View {
     let note: NoteViewModel
-    let isConverting: Bool
+    let isConverting: Bool = false
 
     var body: some View {
         HStack {
