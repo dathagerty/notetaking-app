@@ -2,7 +2,7 @@ import SwiftData
 import Foundation
 
 @Model
-final class Note {
+final class Note: @unchecked Sendable {
     var id: UUID = UUID()
     var title: String = ""
     var content: String = ""

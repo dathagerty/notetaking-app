@@ -348,7 +348,9 @@ struct LibraryFeature {
                 return .none
 
             case .applyFilters:
-                return .run { [query = state.searchQuery, selectedTags = state.selectedTags, selectedNotebookId = state.selectedNotebookId] send in
+                // Extract tag IDs before entering the run effect to avoid actor isolation issues
+                let selectedTagIds = Set(state.selectedTags.map { $0.id })
+                return .run { [query = state.searchQuery, selectedTagIds, selectedNotebookId = state.selectedNotebookId] send in
                     do {
                         var notes: [Note] = []
 
@@ -370,9 +372,7 @@ struct LibraryFeature {
                         }
 
                         // Apply tag filter (AND logic)
-                        // Convert TagViewModels to Tag IDs for comparison with note tags
-                        if !selectedTags.isEmpty {
-                            let selectedTagIds = Set(selectedTags.map { $0.id })
+                        if !selectedTagIds.isEmpty {
                             notes = notes.filter { note in
                                 guard let noteTags = note.tags else { return false }
                                 let noteTagIds = Set(noteTags.map { $0.id })
@@ -387,7 +387,7 @@ struct LibraryFeature {
                     }
                 }
 
-            case .showManageTagsSheet(let noteId):
+            case .showManageTagsSheet:
                 // In a full implementation, this would show a sheet with tag management UI
                 // For now, just prepare the UI state (sheet implementation deferred to future PR)
                 return .none

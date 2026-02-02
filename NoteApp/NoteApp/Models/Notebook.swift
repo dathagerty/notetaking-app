@@ -2,7 +2,7 @@ import SwiftData
 import Foundation
 
 @Model
-final class Notebook {
+final class Notebook: @unchecked Sendable {
     var id: UUID = UUID()
     var name: String = ""
     var createdAt: Date = Date()

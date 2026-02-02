@@ -39,12 +39,21 @@ enum TagRepositoryKey: DependencyKey {
 
 // MARK: - ModelContext Dependency
 
+/// A sendable wrapper for ModelContext to use with Composable Architecture
+struct SendableModelContext: @unchecked Sendable {
+    let context: ModelContext
+
+    init(_ context: ModelContext) {
+        self.context = context
+    }
+}
+
 enum ModelContextKey: DependencyKey {
-    static var liveValue: ModelContext {
+    static var liveValue: SendableModelContext {
         fatalError("ModelContext must be provided by app initialization")
     }
 
-    static var testValue: ModelContext {
+    static var testValue: SendableModelContext {
         let schema = Schema([Notebook.self, Note.self, Tag.self])
         let configuration = ModelConfiguration(
             schema: schema,
@@ -55,7 +64,7 @@ enum ModelContextKey: DependencyKey {
                 for: schema,
                 configurations: [configuration]
             )
-            return ModelContext(container)
+            return SendableModelContext(ModelContext(container))
         } catch {
             fatalError("Failed to create test ModelContainer: \(error)")
         }
@@ -66,8 +75,8 @@ enum ModelContextKey: DependencyKey {
 
 extension DependencyValues {
     var modelContext: ModelContext {
-        get { self[ModelContextKey.self] }
-        set { self[ModelContextKey.self] = newValue }
+        get { self[ModelContextKey.self].context }
+        set { self[ModelContextKey.self] = SendableModelContext(newValue) }
     }
 
     var noteRepository: any NoteRepository {

@@ -23,7 +23,8 @@ protocol NoteRepository: Sendable {
     func searchNotes(query: String) async throws -> [Note]
 }
 
-actor SwiftDataNoteRepository: NoteRepository {
+@MainActor
+final class SwiftDataNoteRepository: NoteRepository {
     private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {

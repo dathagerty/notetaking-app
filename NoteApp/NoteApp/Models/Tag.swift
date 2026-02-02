@@ -2,7 +2,7 @@ import SwiftData
 import Foundation
 
 @Model
-final class Tag: Hashable {
+final class Tag: @unchecked Sendable, Hashable {
     var id: UUID = UUID()
     var name: String = ""
     var createdAt: Date = Date()

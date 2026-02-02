@@ -27,6 +27,7 @@ struct NoteEditorView: View {
                             store.send(.closeButtonTapped)
                         } label: {
                             Label("Close", systemImage: "xmark.circle.fill")
+                                .labelStyle(.iconOnly)
                                 .font(.title2)
                                 .foregroundColor(.primary)
                                 .padding()

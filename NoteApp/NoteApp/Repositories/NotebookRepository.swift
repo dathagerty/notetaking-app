@@ -23,7 +23,7 @@ protocol NotebookRepository: Sendable {
 }
 
 actor SwiftDataNotebookRepository: NotebookRepository {
-    private let modelContext: ModelContext
+    nonisolated(unsafe) private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext

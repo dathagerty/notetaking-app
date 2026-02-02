@@ -10,7 +10,7 @@ struct NotebookViewModel: Equatable, Identifiable {
     let childCount: Int
     let noteCount: Int
 
-    init(from notebook: Notebook) {
+    nonisolated init(from notebook: Notebook) {
         self.id = notebook.id
         self.name = notebook.name
         self.createdAt = notebook.createdAt
@@ -34,7 +34,7 @@ struct NoteViewModel: Equatable, Identifiable {
     let hasDrawing: Bool
     let tagNames: [String]
 
-    init(from note: Note) {
+    nonisolated init(from note: Note) {
         self.id = note.id
         self.title = note.title
         self.content = note.content
@@ -51,7 +51,7 @@ struct TagViewModel: Equatable, Identifiable, Hashable {
     let id: UUID
     let name: String
 
-    init(from tag: Tag) {
+    nonisolated init(from tag: Tag) {
         self.id = tag.id
         self.name = tag.name
     }

@@ -10,7 +10,7 @@ protocol TagRepository: Sendable {
 }
 
 actor SwiftDataTagRepository: TagRepository {
-    private let modelContext: ModelContext
+    nonisolated(unsafe) private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
