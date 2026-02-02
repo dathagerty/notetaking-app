@@ -46,7 +46,8 @@ struct NoteViewModel: Equatable, Identifiable {
 }
 
 /// Lightweight value type for displaying tags
-struct TagViewModel: Equatable, Identifiable {
+/// Hashable conformance required for Set<TagViewModel> in LibraryFeature.State
+struct TagViewModel: Equatable, Identifiable, Hashable {
     let id: UUID
     let name: String
 

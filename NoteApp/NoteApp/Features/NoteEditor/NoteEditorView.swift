@@ -104,21 +104,17 @@ struct NoteEditorView: View {
 struct TagBadgeOverlay: View {
     let tags: [String]
 
-    @ViewBuilder
     var body: some View {
-        guard !tags.isEmpty else {
-            EmptyView()
-            return
-        }
-
-        VStack(alignment: .trailing, spacing: 4) {
-            ForEach(tags, id: \.self) { tag in
-                Text("#\(tag)")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
+        if !tags.isEmpty {
+            VStack(alignment: .trailing, spacing: 4) {
+                ForEach(tags, id: \.self) { tag in
+                    Text("#\(tag)")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                }
             }
         }
     }
