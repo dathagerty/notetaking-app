@@ -148,6 +148,7 @@ struct LibraryFeature {
 
             case .notesLoaded(let viewModels):
                 state.notes = viewModels
+                state.filteredNotes = viewModels
                 state.isLoading = false
                 return .none
 

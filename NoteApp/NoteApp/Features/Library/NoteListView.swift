@@ -8,15 +8,20 @@ struct NoteListView: View {
         Group {
             if let notebookId = store.selectedNotebookId {
                 let notebookName = store.notebooks.first(where: { $0.id == notebookId })?.name ?? "Notebook"
-                List(selection: $store.selectedNoteId.sending(\.noteSelected)) {
-                    ForEach(store.notes) { note in
-                        NoteRowView(note: note)
-                            .tag(note.id as UUID?)
-                            .contextMenu {
-                                Button("Delete", role: .destructive) {
-                                    store.send(.showDeleteConfirmation(item: .note(note.id)))
+                VStack(spacing: 0) {
+                    SearchBar(store: store)
+                    TagFilterBar(store: store)
+
+                    List(selection: $store.selectedNoteId.sending(\.noteSelected)) {
+                        ForEach(store.filteredNotes) { note in
+                            NoteRowView(note: note)
+                                .tag(note.id as UUID?)
+                                .contextMenu {
+                                    Button("Delete", role: .destructive) {
+                                        store.send(.showDeleteConfirmation(item: .note(note.id)))
+                                    }
                                 }
-                            }
+                        }
                     }
                 }
                 .navigationTitle(notebookName)
