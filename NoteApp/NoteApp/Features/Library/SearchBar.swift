@@ -1,6 +1,7 @@
 import SwiftUI
 import ComposableArchitecture
 
+// FCIS: Imperative Shell (view layer for search UI with text input binding)
 struct SearchBar: View {
     @Bindable var store: StoreOf<LibraryFeature>
 

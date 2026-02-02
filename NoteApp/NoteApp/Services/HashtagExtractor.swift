@@ -2,7 +2,33 @@ import Vision
 import PencilKit
 import UIKit
 
+// FCIS: Functional Core with Imperative Shell
+// - Functional Core: extractHashtagsFromText pure function for regex parsing (testable, no side effects)
+// - Imperative Shell: extractHashtags uses Vision framework I/O for OCR text extraction from drawings
 actor HashtagExtractor {
+    /// Pure function to extract hashtags from text using regex
+    /// Testable without requiring PKDrawing or Vision framework
+    static func extractHashtagsFromText(_ text: String) -> Set<String> {
+        let pattern = #"#(\w+)"#
+        var hashtags = Set<String>()
+
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return hashtags
+        }
+
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, range: range)
+
+        for match in matches {
+            if let tagRange = Range(match.range(at: 1), in: text) {
+                let tag = String(text[tagRange]).lowercased()
+                hashtags.insert(tag)
+            }
+        }
+
+        return hashtags
+    }
+
     func extractHashtags(from drawing: PKDrawing) async throws -> Set<String> {
         // Render drawing to image
         let image = drawing.image(
@@ -26,7 +52,7 @@ actor HashtagExtractor {
             return []
         }
 
-        // Extract hashtags from recognized text
+        // Extract hashtags from recognized text using pure parsing function
         var hashtags = Set<String>()
 
         for observation in observations {
@@ -35,19 +61,8 @@ actor HashtagExtractor {
             }
 
             let text = topCandidate.string
-            let pattern = #"#(\w+)"#
-
-            if let regex = try? NSRegularExpression(pattern: pattern) {
-                let range = NSRange(text.startIndex..., in: text)
-                let matches = regex.matches(in: text, range: range)
-
-                for match in matches {
-                    if let tagRange = Range(match.range(at: 1), in: text) {
-                        let tag = String(text[tagRange]).lowercased()
-                        hashtags.insert(tag)
-                    }
-                }
-            }
+            let extractedTags = Self.extractHashtagsFromText(text)
+            hashtags.formUnion(extractedTags)
         }
 
         return hashtags

@@ -1,6 +1,7 @@
 import SwiftUI
 import ComposableArchitecture
 
+// FCIS: Imperative Shell (view layer for tag filter UI with horizontal scrolling)
 struct TagFilterBar: View {
     @Bindable var store: StoreOf<LibraryFeature>
 
@@ -23,7 +24,7 @@ struct TagFilterBar: View {
 }
 
 struct TagChip: View {
-    let tag: Tag
+    let tag: TagViewModel
     let isSelected: Bool
     let action: () -> Void
 

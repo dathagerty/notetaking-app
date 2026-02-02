@@ -17,6 +17,12 @@ struct NoteListView: View {
                             NoteRowView(note: note)
                                 .tag(note.id as UUID?)
                                 .contextMenu {
+                                    Button {
+                                        store.send(.showManageTagsSheet(noteId: note.id))
+                                    } label: {
+                                        Label("Manage Tags", systemImage: "tag.fill")
+                                    }
+
                                     Button("Delete", role: .destructive) {
                                         store.send(.showDeleteConfirmation(item: .note(note.id)))
                                     }

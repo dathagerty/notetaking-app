@@ -62,8 +62,8 @@ struct LibraryFeature {
 
         // Search and filtering
         var searchQuery: String = ""
-        var selectedTags: Set<Tag> = []
-        var allTags: [Tag] = []
+        var selectedTags: Set<TagViewModel> = []
+        var allTags: [TagViewModel] = []
         var filteredNotes: [NoteViewModel] = []
 
         // Computed properties
@@ -105,9 +105,14 @@ struct LibraryFeature {
 
         // Search and filtering
         case searchQueryChanged(String)
-        case tagToggled(Tag)
-        case tagsLoaded([Tag])
+        case tagToggled(TagViewModel)
+        case tagsLoaded([TagViewModel])
         case applyFilters
+
+        // Manual tag management
+        case showManageTagsSheet(noteId: UUID)
+        case addTagToNote(noteId: UUID, tagName: String)
+        case removeTagFromNote(noteId: UUID, tagName: String)
 
         case errorOccurred(String)
     }
@@ -133,7 +138,8 @@ struct LibraryFeature {
                         await send(.notebooksLoaded(viewModels))
 
                         let tags = try await tagRepo.fetchAllTags()
-                        await send(.tagsLoaded(tags))
+                        let tagViewModels = tags.map { TagViewModel(from: $0) }
+                        await send(.tagsLoaded(tagViewModels))
 
                         await send(.applyFilters)
                     } catch {
@@ -342,7 +348,7 @@ struct LibraryFeature {
                 return .none
 
             case .applyFilters:
-                return .run { [query = state.searchQuery, tags = state.selectedTags, selectedNotebookId = state.selectedNotebookId] send in
+                return .run { [query = state.searchQuery, selectedTags = state.selectedTags, selectedNotebookId = state.selectedNotebookId] send in
                     do {
                         var notes: [Note] = []
 
@@ -364,16 +370,54 @@ struct LibraryFeature {
                         }
 
                         // Apply tag filter (AND logic)
-                        if !tags.isEmpty {
+                        // Convert TagViewModels to Tag IDs for comparison with note tags
+                        if !selectedTags.isEmpty {
+                            let selectedTagIds = Set(selectedTags.map { $0.id })
                             notes = notes.filter { note in
                                 guard let noteTags = note.tags else { return false }
-                                let noteTagSet = Set(noteTags)
-                                return tags.isSubset(of: noteTagSet)
+                                let noteTagIds = Set(noteTags.map { $0.id })
+                                return selectedTagIds.isSubset(of: noteTagIds)
                             }
                         }
 
                         let viewModels = notes.map { NoteViewModel(from: $0) }
                         await send(.notesLoaded(viewModels))
+                    } catch {
+                        await send(.errorOccurred(error.localizedDescription))
+                    }
+                }
+
+            case .showManageTagsSheet(let noteId):
+                // In a full implementation, this would show a sheet with tag management UI
+                // For now, just prepare the UI state (sheet implementation deferred to future PR)
+                return .none
+
+            case .addTagToNote(let noteId, let tagName):
+                return .run { send in
+                    do {
+                        if let note = try await noteRepo.fetchNote(id: noteId) {
+                            let tag = try await tagRepo.fetchOrCreateTag(name: tagName)
+                            if note.tags == nil {
+                                note.tags = [tag]
+                            } else {
+                                note.tags?.append(tag)
+                            }
+                            try await noteRepo.updateNote(note)
+                            await send(.refreshData)
+                        }
+                    } catch {
+                        await send(.errorOccurred(error.localizedDescription))
+                    }
+                }
+
+            case .removeTagFromNote(let noteId, let tagName):
+                return .run { send in
+                    do {
+                        if let note = try await noteRepo.fetchNote(id: noteId) {
+                            note.tags?.removeAll { $0.name == tagName }
+                            try await noteRepo.updateNote(note)
+                            await send(.refreshData)
+                        }
                     } catch {
                         await send(.errorOccurred(error.localizedDescription))
                     }

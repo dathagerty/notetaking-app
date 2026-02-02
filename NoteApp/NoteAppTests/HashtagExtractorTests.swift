@@ -3,64 +3,96 @@ import PencilKit
 @testable import NoteApp
 
 final class HashtagExtractorTests: XCTestCase {
-    var extractor: HashtagExtractor!
+    // MARK: - Pure Regex Parsing Tests
 
-    override func setUp() {
-        super.setUp()
-        extractor = HashtagExtractor()
+    func testExtractSingleHashtag() {
+        let text = "This is a note with #hashtag"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
+        XCTAssertEqual(hashtags, ["hashtag"])
     }
 
-    override func tearDown() {
-        super.tearDown()
-        extractor = nil
+    func testExtractMultipleHashtags() {
+        let text = "Check out #swift and #ios development with #xcode"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
+        XCTAssertEqual(hashtags, ["swift", "ios", "xcode"])
     }
 
-    // MARK: - Basic Hashtag Extraction
+    func testHashtagsAreNormalized() {
+        let text = "Testing #MyTag #ALLCAPS #CamelCase"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
 
-    func testExtractSingleHashtag() async throws {
-        // Create a simple drawing with text (we'll use an empty drawing for now
-        // since rendering text in PKDrawing is complex in tests)
-        let drawing = PKDrawing()
+        // All hashtags should be lowercased
+        XCTAssertEqual(hashtags, ["mytag", "allcaps", "camelcase"])
 
-        let hashtags = try await extractor.extractHashtags(from: drawing)
-
-        // Empty drawing should return empty set
-        XCTAssertEqual(hashtags, [])
-    }
-
-    func testExtractMultipleHashtags() async throws {
-        let drawing = PKDrawing()
-
-        let hashtags = try await extractor.extractHashtags(from: drawing)
-
-        // Empty drawing should return empty set
-        XCTAssertEqual(hashtags, [])
-    }
-
-    func testHashtagsAreNormalized() async throws {
-        let drawing = PKDrawing()
-
-        let hashtags = try await extractor.extractHashtags(from: drawing)
-
-        // Hashtags should be lowercased
+        // Verify each hashtag is lowercase
         for hashtag in hashtags {
             XCTAssertEqual(hashtag, hashtag.lowercased())
         }
     }
 
-    func testExtractEmptyDrawing() async throws {
-        let drawing = PKDrawing()
+    func testHashtagsDeduplicated() {
+        let text = "We love #swift and #swift is great, especially #swift"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
 
-        let hashtags = try await extractor.extractHashtags(from: drawing)
+        // Set deduplicates hashtags
+        XCTAssertEqual(hashtags, ["swift"])
+        XCTAssertEqual(hashtags.count, 1)
+    }
 
-        // Empty drawing should return empty set
+    func testNoHashtagsInText() {
+        let text = "This text has no hashtags at all"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
         XCTAssertTrue(hashtags.isEmpty)
     }
 
-    func testHashtagExtractionReturnsSet() async throws {
-        let drawing = PKDrawing()
+    func testHashtagWithNumbers() {
+        let text = "Latest news about #ios17 #macos14 #watchos10"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
 
-        let hashtags = try await extractor.extractHashtags(from: drawing)
+        XCTAssertEqual(hashtags, ["ios17", "macos14", "watchos10"])
+    }
+
+    func testHashtagWithUnderscores() {
+        let text = "Development tips: #best_practices #unit_testing"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
+        XCTAssertEqual(hashtags, ["best_practices", "unit_testing"])
+    }
+
+    func testHashtagAtStartOfText() {
+        let text = "#swift is awesome"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
+        XCTAssertEqual(hashtags, ["swift"])
+    }
+
+    func testHashtagAtEndOfText() {
+        let text = "I love coding with #swift"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
+        XCTAssertEqual(hashtags, ["swift"])
+    }
+
+    func testMultipleHashtagsInSequence() {
+        let text = "Tags: #ios #swift #xcode #macos"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
+        XCTAssertEqual(hashtags, ["ios", "swift", "xcode", "macos"])
+    }
+
+    func testEmptyString() {
+        let text = ""
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
+
+        XCTAssertTrue(hashtags.isEmpty)
+    }
+
+    func testHashtagExtractionReturnsSet() {
+        let text = "#tag1 #tag2"
+        let hashtags = HashtagExtractor.extractHashtagsFromText(text)
 
         // Result should be a Set (no duplicates)
         XCTAssertTrue(type(of: hashtags) == Set<String>.self)

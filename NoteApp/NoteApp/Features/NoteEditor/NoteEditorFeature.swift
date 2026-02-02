@@ -38,6 +38,7 @@ struct NoteEditorFeature {
         case saveDrawing
         case drawingSaved
         case saveFailed(String)
+        case tagSaveFailed(String)
         case tagsDetected(Set<String>)
         case closeButtonTapped
         case exitConfirmation(PresentationAction<ExitConfirmation>)
@@ -100,29 +101,39 @@ struct NoteEditorFeature {
 
                 return .run { send in
                     do {
-                        // Use PKDrawing's native serialization
+                        // STEP 1: Save drawing first (critical data)
                         let data = drawing.dataRepresentation()
 
-                        // Extract hashtags asynchronously
-                        let extractor = HashtagExtractor()
-                        let detectedTags = try await extractor.extractHashtags(from: drawing)
-
-                        // Update UI with detected tags
-                        await send(.tagsDetected(detectedTags))
-
-                        // Create/fetch tags and attach to note (use tagRepo from reducer scope)
-                        var tags: [Tag] = []
-                        for tagName in detectedTags {
-                            let tag = try await tagRepo.fetchOrCreateTag(name: tagName)
-                            tags.append(tag)
-                        }
-
-                        // Update note with drawing data and tags
                         if let note = try await noteRepo.fetchNote(id: noteId) {
                             note.drawingData = data
-                            note.tags = tags
                             note.updatedAt = Date()
                             try await noteRepo.updateNote(note)
+                        }
+
+                        // STEP 2: Extract and attach tags (non-critical)
+                        // Even if tag operations fail, drawing is safely saved
+                        do {
+                            let extractor = HashtagExtractor()
+                            let detectedTags = try await extractor.extractHashtags(from: drawing)
+
+                            // Update UI with detected tags
+                            await send(.tagsDetected(detectedTags))
+
+                            // Create/fetch tags and attach to note
+                            var tags: [Tag] = []
+                            for tagName in detectedTags {
+                                let tag = try await tagRepo.fetchOrCreateTag(name: tagName)
+                                tags.append(tag)
+                            }
+
+                            // Update note with tags
+                            if let note = try await noteRepo.fetchNote(id: noteId) {
+                                note.tags = tags
+                                try await noteRepo.updateNote(note)
+                            }
+                        } catch {
+                            // Log tag failure but don't fail the save
+                            await send(.tagSaveFailed(error.localizedDescription))
                         }
 
                         await send(.drawingSaved)
@@ -133,6 +144,12 @@ struct NoteEditorFeature {
 
             case .tagsDetected(let tags):
                 state.detectedTags = tags
+                return .none
+
+            case .tagSaveFailed(let message):
+                // Log warning but don't fail the save since drawing was already saved
+                // In a full app, this could send to error tracking service
+                print("Warning: Tag save failed: \(message)")
                 return .none
 
             case .drawingSaved:
