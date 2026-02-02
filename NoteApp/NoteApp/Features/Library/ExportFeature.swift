@@ -67,7 +67,7 @@ struct ExportFeature {
                 state.shareSheet = ShareSheetState(url: url)
                 return .none
 
-            case .exportFailed(let error):
+            case .exportFailed:
                 state.isExporting = false
                 return .none
 

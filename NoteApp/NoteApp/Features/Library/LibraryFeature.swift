@@ -468,7 +468,7 @@ struct LibraryFeature {
                     }
                 }
 
-            case .handwritingConverted(let noteId, let text):
+            case .handwritingConverted:
                 state.convertingNoteId = nil
                 return .send(.refreshData)
 
