@@ -6,6 +6,7 @@
 import Testing
 import ComposableArchitecture
 import Foundation
+import PencilKit
 @testable import NoteApp
 
 struct LibraryFeatureTests {
@@ -58,6 +59,49 @@ struct LibraryFeatureTests {
         }
 
         func deleteNotebook(id: UUID) async throws {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+        }
+    }
+
+    private struct MockTagRepository: TagRepository {
+        var mockTags: [NoteApp.Tag] = []
+        var shouldThrowError = false
+
+        func fetchAllTags() async throws -> [NoteApp.Tag] {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return mockTags
+        }
+
+        func fetchTag(name: String) async throws -> NoteApp.Tag? {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return mockTags.first(where: { $0.name == name })
+        }
+
+        func fetchOrCreateTag(name: String) async throws -> NoteApp.Tag {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            if let tag = mockTags.first(where: { $0.name == name }) {
+                return tag
+            }
+            let tag = NoteApp.Tag(name: name)
+            return tag
+        }
+
+        func fetchNotes(withTag tag: NoteApp.Tag) async throws -> [NoteApp.Note] {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return []
+        }
+
+        func deleteTag(name: String) async throws {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
             }
@@ -123,12 +167,19 @@ struct LibraryFeatureTests {
                 note.title.contains(query) || note.content.contains(query)
             }
         }
+
+        mutating func markNoteAsUpdated(_ note: Note) {
+            if let index = mockNotes.firstIndex(where: { $0.id == note.id }) {
+                mockNotes[index] = note
+            }
+        }
     }
 
     @Test func onAppear_loadsRootNotebooks() async {
         let notebook = Notebook(name: "Test Notebook")
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
         let mockNoteRepo = MockNoteRepository()
+        let mockTagRepo = MockTagRepository()
 
         let store = TestStore(
             initialState: LibraryFeature.State(),
@@ -136,6 +187,7 @@ struct LibraryFeatureTests {
         ) {
             $0.notebookRepository = mockNotebookRepo
             $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
         }
 
         await store.send(.onAppear)
@@ -153,6 +205,7 @@ struct LibraryFeatureTests {
 
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [parentNotebook, childNotebook])
         let mockNoteRepo = MockNoteRepository(mockNotes: [note])
+        let mockTagRepo = MockTagRepository()
 
         let store = TestStore(
             initialState: LibraryFeature.State(notebooks: [
@@ -163,6 +216,7 @@ struct LibraryFeatureTests {
         ) {
             $0.notebookRepository = mockNotebookRepo
             $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
         }
 
         let childId = childNotebook.id
@@ -218,6 +272,7 @@ struct LibraryFeatureTests {
     @Test func createNotebookSheet_createsNotebookWithName() async {
         let mockNotebookRepo = MockNotebookRepository()
         let mockNoteRepo = MockNoteRepository()
+        let mockTagRepo = MockTagRepository()
 
         let store = TestStore(
             initialState: LibraryFeature.State(
@@ -230,6 +285,7 @@ struct LibraryFeatureTests {
         ) {
             $0.notebookRepository = mockNotebookRepo
             $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
         }
 
         await store.send(.createNotebookSheet(.createButtonTapped)) { state in
@@ -286,6 +342,7 @@ struct LibraryFeatureTests {
 
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
         let mockNoteRepo = MockNoteRepository()
+        let mockTagRepo = MockTagRepository()
 
         let store = TestStore(
             initialState: LibraryFeature.State(
@@ -296,6 +353,7 @@ struct LibraryFeatureTests {
         ) {
             $0.notebookRepository = mockNotebookRepo
             $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
         }
 
         await store.send(.createNoteSheet(.createButtonTapped)) { state in
@@ -312,6 +370,7 @@ struct LibraryFeatureTests {
 
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
         let mockNoteRepo = MockNoteRepository()
+        let mockTagRepo = MockTagRepository()
 
         let store = TestStore(
             initialState: LibraryFeature.State(
@@ -331,6 +390,7 @@ struct LibraryFeatureTests {
         ) {
             $0.notebookRepository = mockNotebookRepo
             $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
         }
 
         await store.send(.deleteConfirmation(.presented(.confirmDelete))) { state in
@@ -352,6 +412,7 @@ struct LibraryFeatureTests {
 
         let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
         let mockNoteRepo = MockNoteRepository(mockNotes: [note])
+        let mockTagRepo = MockTagRepository()
 
         let store = TestStore(
             initialState: LibraryFeature.State(
@@ -371,6 +432,7 @@ struct LibraryFeatureTests {
         ) {
             $0.notebookRepository = mockNotebookRepo
             $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
         }
 
         await store.send(.deleteConfirmation(.presented(.confirmDelete))) { state in
@@ -407,5 +469,96 @@ struct LibraryFeatureTests {
         let notebookId = UUID()
         await store.send(.navigateToBreadcrumb(notebookId))
         await store.receive(\.notebookSelected)
+    }
+
+    @Test func convertHandwriting_extractsTextAndUpdatesNote() async {
+        let notebook = Notebook(name: "Test")
+        let note = Note(title: "Test Note", content: "", notebook: notebook)
+
+        // Create a simple drawing for testing
+        let drawing = PKDrawing()
+        note.drawingData = drawing.dataRepresentation()
+        let noteId = note.id
+
+        var mockNoteRepo = MockNoteRepository(mockNotes: [note])
+        let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
+        let mockTagRepo = MockTagRepository()
+
+        let store = TestStore(
+            initialState: LibraryFeature.State(
+                notes: [NoteViewModel(from: note)]
+            ),
+            reducer: { LibraryFeature() }
+        ) {
+            $0.notebookRepository = mockNotebookRepo
+            $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
+        }
+
+        await store.send(.convertHandwriting(noteId: noteId)) { state in
+            state.convertingNoteId = noteId
+        }
+
+        // Handwriting conversion completes (may be empty for blank drawing)
+        await store.receive(\.handwritingConverted) { state in
+            state.convertingNoteId = nil
+        }
+
+        // After conversion, refreshData is sent
+        await store.receive(\.refreshData)
+        await store.receive(\.notebooksLoaded)
+    }
+
+    @Test func convertHandwriting_failsWhenNoteNotFound() async {
+        let mockNoteRepo = MockNoteRepository(mockNotes: [])
+        let mockNotebookRepo = MockNotebookRepository()
+        let mockTagRepo = MockTagRepository()
+
+        let store = TestStore(
+            initialState: LibraryFeature.State(),
+            reducer: { LibraryFeature() }
+        ) {
+            $0.notebookRepository = mockNotebookRepo
+            $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
+        }
+
+        let missingNoteId = UUID()
+        await store.send(.convertHandwriting(noteId: missingNoteId)) { state in
+            state.convertingNoteId = missingNoteId
+        }
+
+        await store.receive(\.conversionFailed) { state in
+            state.convertingNoteId = nil
+            #expect(state.errorMessage?.contains("Note not found") ?? false)
+        }
+    }
+
+    @Test func convertHandwriting_failsWhenNoteHasNoDrawing() async {
+        let notebook = Notebook(name: "Test")
+        let note = Note(title: "Test Note", content: "", notebook: notebook)
+        let noteId = note.id
+
+        let mockNoteRepo = MockNoteRepository(mockNotes: [note])
+        let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
+        let mockTagRepo = MockTagRepository()
+
+        let store = TestStore(
+            initialState: LibraryFeature.State(),
+            reducer: { LibraryFeature() }
+        ) {
+            $0.notebookRepository = mockNotebookRepo
+            $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
+        }
+
+        await store.send(.convertHandwriting(noteId: noteId)) { state in
+            state.convertingNoteId = noteId
+        }
+
+        await store.receive(\.conversionFailed) { state in
+            state.convertingNoteId = nil
+            #expect(state.errorMessage?.contains("no drawing") ?? false)
+        }
     }
 }

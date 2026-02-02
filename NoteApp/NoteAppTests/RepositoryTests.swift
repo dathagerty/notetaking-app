@@ -23,10 +23,16 @@ final class RepositoryTests: XCTestCase {
         )
         modelContext = ModelContext(container)
 
-        // Initialize repositories
-        notebookRepo = SwiftDataNotebookRepository(modelContext: modelContext)
-        noteRepo = SwiftDataNoteRepository(modelContext: modelContext)
-        tagRepo = SwiftDataTagRepository(modelContext: modelContext)
+        // Initialize repositories on main thread
+        notebookRepo = MainActor.assumeIsolated {
+            SwiftDataNotebookRepository(modelContext: modelContext)
+        }
+        noteRepo = MainActor.assumeIsolated {
+            SwiftDataNoteRepository(modelContext: modelContext)
+        }
+        tagRepo = MainActor.assumeIsolated {
+            SwiftDataTagRepository(modelContext: modelContext)
+        }
     }
 
     override func tearDown() {

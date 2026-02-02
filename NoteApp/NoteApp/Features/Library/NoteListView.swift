@@ -14,9 +14,18 @@ struct NoteListView: View {
 
                     List(selection: $store.selectedNoteId.sending(\.noteSelected)) {
                         ForEach(store.filteredNotes) { note in
-                            NoteRowView(note: note)
+                            NoteRowView(
+                                note: note,
+                                isConverting: store.convertingNoteId == note.id
+                            )
                                 .tag(note.id as UUID?)
                                 .contextMenu {
+                                    Button {
+                                        store.send(.convertHandwriting(noteId: note.id))
+                                    } label: {
+                                        Label("Convert Handwriting", systemImage: "doc.text.magnifyingglass")
+                                    }
+
                                     Button {
                                         store.send(.showManageTagsSheet(noteId: note.id))
                                     } label: {

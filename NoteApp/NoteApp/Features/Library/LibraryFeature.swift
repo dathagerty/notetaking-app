@@ -1,6 +1,7 @@
 import ComposableArchitecture
 import Foundation
 import PencilKit
+import Vision
 
 // Types used by LibraryFeature - defined outside to avoid circular references
 struct CreateNotebookSheetState: Equatable, Identifiable {
@@ -66,6 +67,9 @@ struct LibraryFeature {
         var allTags: [TagViewModel] = []
         var filteredNotes: [NoteViewModel] = []
 
+        // Handwriting conversion progress
+        var convertingNoteId: UUID? = nil
+
         // Computed properties
         var selectedNotebook: NotebookViewModel? {
             notebooks.first { $0.id == selectedNotebookId }
@@ -113,6 +117,11 @@ struct LibraryFeature {
         case showManageTagsSheet(noteId: UUID)
         case addTagToNote(noteId: UUID, tagName: String)
         case removeTagFromNote(noteId: UUID, tagName: String)
+
+        // Handwriting conversion
+        case convertHandwriting(noteId: UUID)
+        case handwritingConverted(noteId: UUID, text: String)
+        case conversionFailed(String)
 
         case errorOccurred(String)
     }
@@ -422,6 +431,45 @@ struct LibraryFeature {
                         await send(.errorOccurred(error.localizedDescription))
                     }
                 }
+
+            case .convertHandwriting(let noteId):
+                state.convertingNoteId = noteId
+                return .run { [noteId] send in
+                    do {
+                        guard let note = try await noteRepo.fetchNote(id: noteId) else {
+                            await send(.conversionFailed("Note not found"))
+                            return
+                        }
+
+                        guard let drawingData = note.drawingData else {
+                            await send(.conversionFailed("Note has no drawing"))
+                            return
+                        }
+
+                        // Use PKDrawing's native deserialization
+                        let drawing = try PKDrawing(data: drawingData)
+
+                        let recognitionService = HandwritingRecognitionService()
+                        let text = try await recognitionService.recognizeText(from: drawing)
+
+                        note.searchableText = text
+                        try await noteRepo.updateNote(note)
+
+                        await send(.handwritingConverted(noteId: noteId, text: text))
+                    } catch {
+                        await send(.conversionFailed(error.localizedDescription))
+                    }
+                }
+
+            case .handwritingConverted(let noteId, let text):
+                state.convertingNoteId = nil
+                print("Converted note \(noteId): \(text.prefix(100))...")
+                return .send(.refreshData)
+
+            case .conversionFailed(let error):
+                state.convertingNoteId = nil
+                state.errorMessage = "Conversion failed: \(error)"
+                return .none
 
             case .errorOccurred(let message):
                 state.errorMessage = message
