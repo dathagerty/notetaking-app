@@ -38,6 +38,7 @@ struct NoteEditorFeature {
         case saveDrawing
         case drawingSaved
         case saveFailed(String)
+        case tagsDetected(Set<String>)
         case closeButtonTapped
         case exitConfirmation(PresentationAction<ExitConfirmation>)
         case hideNavigationAfterDelay
@@ -106,6 +107,9 @@ struct NoteEditorFeature {
                         let extractor = HashtagExtractor()
                         let detectedTags = try await extractor.extractHashtags(from: drawing)
 
+                        // Update UI with detected tags
+                        await send(.tagsDetected(detectedTags))
+
                         // Create/fetch tags and attach to note (use tagRepo from reducer scope)
                         var tags: [Tag] = []
                         for tagName in detectedTags {
@@ -126,6 +130,10 @@ struct NoteEditorFeature {
                         await send(.saveFailed(error.localizedDescription))
                     }
                 }
+
+            case .tagsDetected(let tags):
+                state.detectedTags = tags
+                return .none
 
             case .drawingSaved:
                 state.hasUnsavedChanges = false

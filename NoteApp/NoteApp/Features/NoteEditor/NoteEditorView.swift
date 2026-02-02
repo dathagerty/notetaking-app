@@ -55,6 +55,21 @@ struct NoteEditorView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            // Tag badge overlay showing detected hashtags
+            if !store.detectedTags.isEmpty {
+                VStack {
+                    Spacer()
+
+                    HStack {
+                        Spacer()
+
+                        TagBadgeOverlay(tags: Array(store.detectedTags))
+                            .padding()
+                    }
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
             // Invisible double-tap detection zone at top edge
             VStack {
                 Color.clear
@@ -82,6 +97,24 @@ struct NoteEditorView: View {
             )
         )
         .interactiveDismissDisabled(store.hasUnsavedChanges)
+    }
+}
+
+// Tag badge overlay showing detected hashtags
+struct TagBadgeOverlay: View {
+    let tags: [String]
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            ForEach(tags, id: \.self) { tag in
+                Text("#\(tag)")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+            }
+        }
     }
 }
 

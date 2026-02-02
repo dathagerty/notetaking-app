@@ -345,6 +345,9 @@ struct NoteEditorFeatureTests {
         await store.send(.saveDrawing) { state in
             state.isSaving = true
         }
+        await store.receive(\.tagsDetected) { state in
+            // Tags detected action sent
+        }
         await store.receive(\.drawingSaved) { state in
             state.hasUnsavedChanges = false
             state.isSaving = false
