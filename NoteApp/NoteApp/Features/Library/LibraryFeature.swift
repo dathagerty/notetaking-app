@@ -70,6 +70,9 @@ struct LibraryFeature {
         // Handwriting conversion progress
         var convertingNoteId: UUID? = nil
 
+        // Export feature
+        @Presents var exportFeature: ExportFeature.State?
+
         // Computed properties
         var selectedNotebook: NotebookViewModel? {
             notebooks.first { $0.id == selectedNotebookId }
@@ -122,6 +125,10 @@ struct LibraryFeature {
         case convertHandwriting(noteId: UUID)
         case handwritingConverted(noteId: UUID, text: String)
         case conversionFailed(String)
+
+        // Export
+        case exportNote(noteId: UUID)
+        case exportFeature(PresentationAction<ExportFeature.Action>)
 
         case errorOccurred(String)
     }
@@ -471,6 +478,21 @@ struct LibraryFeature {
                 state.errorMessage = "Conversion failed: \(error)"
                 return .none
 
+            case .exportNote(let noteId):
+                state.exportFeature = ExportFeature.State(
+                    noteIds: [noteId],
+                    exportFormat: .pdf,
+                    isExporting: false
+                )
+                return .none
+
+            case .exportFeature(.presented(.shareSheet(.dismiss))):
+                state.exportFeature = nil
+                return .none
+
+            case .exportFeature:
+                return .none
+
             case .errorOccurred(let message):
                 state.errorMessage = message
                 state.isLoading = false
@@ -488,6 +510,9 @@ struct LibraryFeature {
         .ifLet(\.$deleteConfirmation, action: \.deleteConfirmation)
         .ifLet(\.$noteEditor, action: \.noteEditor) {
             NoteEditorFeature()
+        }
+        .ifLet(\.$exportFeature, action: \.exportFeature) {
+            ExportFeature()
         }
     }
 }

@@ -27,6 +27,12 @@ struct NoteListView: View {
                                     }
 
                                     Button {
+                                        store.send(.exportNote(noteId: note.id))
+                                    } label: {
+                                        Label("Export", systemImage: "square.and.arrow.up")
+                                    }
+
+                                    Button {
                                         store.send(.showManageTagsSheet(noteId: note.id))
                                     } label: {
                                         Label("Manage Tags", systemImage: "tag.fill")

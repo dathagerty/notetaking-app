@@ -41,6 +41,13 @@ struct LibraryView: View {
                     Text(String(state: message))
                 }
             }
+            .sheet(isPresented: shareSheetPresented) {
+                if let url = store.exportFeature?.shareSheet?.url {
+                    ShareSheet(url: url) {
+                        store.send(.exportFeature(.presented(.shareSheet(.dismiss))))
+                    }
+                }
+            }
     }
 
     private var deleteDialogBinding: Binding<Bool> {
@@ -61,6 +68,13 @@ struct LibraryView: View {
         Binding(
             get: { store.createNoteSheet },
             set: { _ in }
+        )
+    }
+
+    private var shareSheetPresented: Binding<Bool> {
+        Binding(
+            get: { store.exportFeature?.shareSheet != nil },
+            set: { if !$0 { store.send(.exportFeature(.presented(.shareSheet(.dismiss)))) } }
         )
     }
 
