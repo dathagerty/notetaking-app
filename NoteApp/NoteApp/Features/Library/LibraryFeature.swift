@@ -60,6 +60,12 @@ struct LibraryFeature {
         // Note editor state
         @Presents var noteEditor: NoteEditorFeature.State?
 
+        // Search and filtering
+        var searchQuery: String = ""
+        var selectedTags: Set<Tag> = []
+        var allTags: [Tag] = []
+        var filteredNotes: [NoteViewModel] = []
+
         // Computed properties
         var selectedNotebook: NotebookViewModel? {
             notebooks.first { $0.id == selectedNotebookId }
@@ -97,11 +103,18 @@ struct LibraryFeature {
         // Note editor
         case noteEditor(PresentationAction<NoteEditorFeature.Action>)
 
+        // Search and filtering
+        case searchQueryChanged(String)
+        case tagToggled(Tag)
+        case tagsLoaded([Tag])
+        case applyFilters
+
         case errorOccurred(String)
     }
 
     @Dependency(\.notebookRepository) var notebookRepo
     @Dependency(\.noteRepository) var noteRepo
+    @Dependency(\.tagRepository) var tagRepo
 
     var body: some Reducer<State, Action> {
         Reduce { state, action -> Effect<Action> in
@@ -113,18 +126,16 @@ struct LibraryFeature {
 
             case .refreshData:
                 state.isLoading = true
-                return .run { [selectedNotebookId = state.selectedNotebookId] send in
+                return .run { send in
                     do {
                         let notebooks = try await notebookRepo.fetchRootNotebooks()
                         let viewModels = notebooks.map { NotebookViewModel(from: $0) }
                         await send(.notebooksLoaded(viewModels))
 
-                        if let notebookId = selectedNotebookId,
-                           let notebook = notebooks.first(where: { $0.id == notebookId }) {
-                            let notes = try await noteRepo.fetchNotes(in: notebook)
-                            let noteViewModels = notes.map { NoteViewModel(from: $0) }
-                            await send(.notesLoaded(noteViewModels))
-                        }
+                        let tags = try await tagRepo.fetchAllTags()
+                        await send(.tagsLoaded(tags))
+
+                        await send(.applyFilters)
                     } catch {
                         await send(.errorOccurred(error.localizedDescription))
                     }
@@ -158,12 +169,9 @@ struct LibraryFeature {
                             }
                             let pathViewModels = path.map { NotebookViewModel(from: $0) }
 
-                            let notes = try await noteRepo.fetchNotes(in: notebook)
-                            let noteViewModels = notes.map { NoteViewModel(from: $0) }
-
-                            // Send both breadcrumb path and notes
+                            // Send breadcrumb path and apply filters
                             await send(.breadcrumbPathUpdated(pathViewModels))
-                            await send(.notesLoaded(noteViewModels))
+                            await send(.applyFilters)
                         } catch {
                             await send(.errorOccurred(error.localizedDescription))
                         }
@@ -314,6 +322,60 @@ struct LibraryFeature {
                 state.itemPendingDeletion = nil
                 return .run { send in
                     await send(.refreshData)
+                }
+
+            case .searchQueryChanged(let query):
+                state.searchQuery = query
+                return .send(.applyFilters)
+
+            case .tagToggled(let tag):
+                if state.selectedTags.contains(tag) {
+                    state.selectedTags.remove(tag)
+                } else {
+                    state.selectedTags.insert(tag)
+                }
+                return .send(.applyFilters)
+
+            case .tagsLoaded(let tags):
+                state.allTags = tags
+                return .none
+
+            case .applyFilters:
+                return .run { [query = state.searchQuery, tags = state.selectedTags, selectedNotebookId = state.selectedNotebookId] send in
+                    do {
+                        var notes: [Note] = []
+
+                        // Fetch base notes from selected notebook
+                        if let notebookId = selectedNotebookId,
+                           let notebook = try await notebookRepo.fetchNotebook(id: notebookId) {
+                            notes = try await noteRepo.fetchNotes(in: notebook)
+                        } else {
+                            notes = try await noteRepo.fetchAllNotes()
+                        }
+
+                        // Apply search filter
+                        if !query.isEmpty {
+                            notes = notes.filter { note in
+                                note.title.localizedCaseInsensitiveContains(query) ||
+                                note.content.localizedCaseInsensitiveContains(query) ||
+                                (note.searchableText?.localizedCaseInsensitiveContains(query) ?? false)
+                            }
+                        }
+
+                        // Apply tag filter (AND logic)
+                        if !tags.isEmpty {
+                            notes = notes.filter { note in
+                                guard let noteTags = note.tags else { return false }
+                                let noteTagSet = Set(noteTags)
+                                return tags.isSubset(of: noteTagSet)
+                            }
+                        }
+
+                        let viewModels = notes.map { NoteViewModel(from: $0) }
+                        await send(.notesLoaded(viewModels))
+                    } catch {
+                        await send(.errorOccurred(error.localizedDescription))
+                    }
                 }
 
             case .errorOccurred(let message):

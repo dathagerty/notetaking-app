@@ -2,7 +2,7 @@ import SwiftData
 import Foundation
 
 @Model
-final class Tag {
+final class Tag: Hashable {
     var id: UUID = UUID()
     var name: String = ""
     var createdAt: Date = Date()
@@ -13,5 +13,13 @@ final class Tag {
     init(name: String) {
         self.name = name
         self.createdAt = Date()
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: Tag, rhs: Tag) -> Bool {
+        lhs.id == rhs.id
     }
 }

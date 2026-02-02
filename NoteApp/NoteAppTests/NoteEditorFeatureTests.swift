@@ -76,28 +76,28 @@ struct NoteEditorFeatureTests {
         var createdTags: [String] = []
         var shouldThrowError = false
 
-        func fetchAllTags() async throws -> [Tag] {
+        func fetchAllTags() async throws -> [NoteApp.Tag] {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
             }
-            return createdTags.map { Tag(name: $0) }
+            return createdTags.map { NoteApp.Tag(name: $0) }
         }
 
-        func fetchTag(name: String) async throws -> Tag? {
+        func fetchTag(name: String) async throws -> NoteApp.Tag? {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
             }
-            return createdTags.contains(name) ? Tag(name: name) : nil
+            return createdTags.contains(name) ? NoteApp.Tag(name: name) : nil
         }
 
-        func fetchOrCreateTag(name: String) async throws -> Tag {
+        func fetchOrCreateTag(name: String) async throws -> NoteApp.Tag {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
             }
-            return Tag(name: name)
+            return NoteApp.Tag(name: name)
         }
 
-        func fetchNotes(withTag tag: Tag) async throws -> [Note] {
+        func fetchNotes(withTag tag: NoteApp.Tag) async throws -> [Note] {
             if shouldThrowError {
                 throw NSError(domain: "", code: -1)
             }
