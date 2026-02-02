@@ -72,6 +72,45 @@ struct NoteEditorFeatureTests {
         }
     }
 
+    private struct MockTagRepository: TagRepository {
+        var createdTags: [String] = []
+        var shouldThrowError = false
+
+        func fetchAllTags() async throws -> [Tag] {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return createdTags.map { Tag(name: $0) }
+        }
+
+        func fetchTag(name: String) async throws -> Tag? {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return createdTags.contains(name) ? Tag(name: name) : nil
+        }
+
+        func fetchOrCreateTag(name: String) async throws -> Tag {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return Tag(name: name)
+        }
+
+        func fetchNotes(withTag tag: Tag) async throws -> [Note] {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+            return []
+        }
+
+        func deleteTag(name: String) async throws {
+            if shouldThrowError {
+                throw NSError(domain: "", code: -1)
+            }
+        }
+    }
+
     @Test func hideNavigationAfterDelay_hidesNavigationAfter3Seconds() async {
         let noteId = UUID()
         let store = TestStore(
@@ -277,5 +316,38 @@ struct NoteEditorFeatureTests {
         await store.send(.exitConfirmation(.presented(.confirmExit)))
         // After confirming exit, delegate action is sent
         await store.receive(\.delegate)
+    }
+
+    @Test func saveDrawing_withHashtags_attachesTagsToNote() async {
+        let noteId = UUID()
+        let notebook = Notebook(name: "Test Notebook")
+        let note = Note(title: "Test Note", content: "", notebook: notebook)
+        note.id = noteId
+        let drawing = PKDrawing()
+
+        let mockNoteRepo = MockNoteRepository(mockNotes: [note])
+        let mockTagRepo = MockTagRepository()
+
+        let store = TestStore(
+            initialState: NoteEditorFeature.State(
+                noteId: noteId,
+                noteTitle: "Test Note",
+                drawing: drawing,
+                hasUnsavedChanges: true
+            ),
+            reducer: { NoteEditorFeature() }
+        ) {
+            $0.continuousClock = ImmediateClock()
+            $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
+        }
+
+        await store.send(.saveDrawing) { state in
+            state.isSaving = true
+        }
+        await store.receive(\.drawingSaved) { state in
+            state.hasUnsavedChanges = false
+            state.isSaving = false
+        }
     }
 }

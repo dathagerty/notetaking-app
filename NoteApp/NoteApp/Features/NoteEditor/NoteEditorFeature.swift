@@ -15,6 +15,7 @@ struct NoteEditorFeature {
         var hasUnsavedChanges: Bool = false
         var isSaving: Bool = false
         var navigationVisible: Bool = true
+        var detectedTags: Set<String> = []
         @Presents var exitConfirmation: ConfirmationDialogState<ExitConfirmation>?
     }
 
@@ -52,6 +53,7 @@ struct NoteEditorFeature {
     }
 
     @Dependency(\.noteRepository) var noteRepo
+    @Dependency(\.tagRepository) var tagRepo
     @Dependency(\.continuousClock) var clock
 
     var body: some Reducer<State, Action> {
@@ -92,15 +94,33 @@ struct NoteEditorFeature {
                 guard state.hasUnsavedChanges else { return .none }
                 state.isSaving = true
 
+                let drawing = state.drawing
                 let noteId = state.noteId
-                let drawingData = state.drawing.dataRepresentation()
 
                 return .run { send in
                     do {
-                        try await noteRepo.updateDrawingData(
-                            noteId: noteId,
-                            drawingData: drawingData
-                        )
+                        // Use PKDrawing's native serialization
+                        let data = drawing.dataRepresentation()
+
+                        // Extract hashtags asynchronously
+                        let extractor = HashtagExtractor()
+                        let detectedTags = try await extractor.extractHashtags(from: drawing)
+
+                        // Create/fetch tags and attach to note (use tagRepo from reducer scope)
+                        var tags: [Tag] = []
+                        for tagName in detectedTags {
+                            let tag = try await tagRepo.fetchOrCreateTag(name: tagName)
+                            tags.append(tag)
+                        }
+
+                        // Update note with drawing data and tags
+                        if let note = try await noteRepo.fetchNote(id: noteId) {
+                            note.drawingData = data
+                            note.tags = tags
+                            note.updatedAt = Date()
+                            try await noteRepo.updateNote(note)
+                        }
+
                         await send(.drawingSaved)
                     } catch {
                         await send(.saveFailed(error.localizedDescription))
