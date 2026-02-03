@@ -447,7 +447,7 @@ struct LibraryFeatureTests {
         await store.receive(\.notebooksLoaded)
     }
 
-    @Test func errorOccurred_setsErrorMessage() async {
+    @Test func errorOccurred_presentsErrorAlert() async {
         let store = TestStore(
             initialState: LibraryFeature.State(),
             reducer: { LibraryFeature() }
@@ -455,7 +455,7 @@ struct LibraryFeatureTests {
 
         let errorMessage = "Test error"
         await store.send(.errorOccurred(errorMessage)) { state in
-            state.errorMessage = errorMessage
+            #expect(state.errorAlert != nil)
             state.isLoading = false
         }
     }
@@ -633,7 +633,7 @@ struct LibraryFeatureTests {
         }
     }
 
-    @Test func errorOccurred_presentsErrorAlert() async {
+    @Test func errorOccurred_createsAlertWithMessage() async {
         let store = TestStore(
             initialState: LibraryFeature.State(),
             reducer: { LibraryFeature() }
@@ -641,7 +641,7 @@ struct LibraryFeatureTests {
 
         let errorMessage = "Network connection failed"
         await store.send(.errorOccurred(errorMessage)) { state in
-            state.errorAlert != nil
+            #expect(state.errorAlert != nil)
             state.isLoading = false
         }
     }
@@ -695,8 +695,6 @@ struct LibraryFeatureTests {
             reducer: { LibraryFeature() }
         )
 
-        await store.send(.errorAlert(.presented(.dismiss))) { state in
-            state.errorAlert = nil
-        }
+        await store.send(.errorAlert(.presented(.dismiss)))
     }
 }

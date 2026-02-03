@@ -25,6 +25,12 @@ struct NoteRowView: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title)")
-        .accessibilityHint("Created \(note.createdAt, style: .relative). Double tap to open.")
+        .accessibilityHint("Created \(relativeDateString(note.createdAt)). Double tap to open.")
+    }
+
+    private func relativeDateString(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }

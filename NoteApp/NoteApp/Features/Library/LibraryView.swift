@@ -2,6 +2,7 @@ import SwiftUI
 import ComposableArchitecture
 import PencilKit
 
+// FCIS: Imperative Shell (view layer) for Library navigation and notebook/note management
 struct LibraryView: View {
     @Bindable var store: StoreOf<LibraryFeature>
 
@@ -32,13 +33,11 @@ struct LibraryView: View {
                                 .foregroundColor(.secondary)
                         }
 
-                        if let syncError = store.syncError {
-                            Button {
-                                // Show error details
-                            } label: {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.red)
-                            }
+                        if let _ = store.syncError {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                                .accessibilityLabel("Sync error occurred")
+                                .accessibilityHint("CloudKit synchronization encountered an error. Check your network connection and try again.")
                         }
                     }
                 }
