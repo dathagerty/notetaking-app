@@ -112,6 +112,12 @@ User draws → .drawingChanged(PKDrawing)
 
 **Auto-save Strategy**: Drawing changes debounced with 2-second delay using TCA's cancellable effects. Prevents excessive saves during active drawing while ensuring data persistence.
 
+**Save Failure Recovery**: Exponential backoff retry (2^n seconds, max 60s) for transient save failures. After 3 auto-retries, presents user alert with Retry/Discard options. Uses `saveAttempts` counter and `saveErrorAlert: AlertState<SaveErrorAlert>?` in state.
+
+**Network Monitoring**: `NWPathMonitor` runs as long-lived effect from `AppFeature.onAppear`. Status propagated to child features via parent-to-child state sync (`state.library.isOnline = isOnline`). Enables offline-aware UI.
+
+**Error Alert Pattern**: TCA's `AlertState<Action>` with `@CasePathable` action enum for structured error handling. Pattern: error occurs -> set `errorAlert` state -> `.ifLet(\.$errorAlert, action: \.errorAlert)` -> handle `retry`/`dismiss` actions.
+
 **Strict Single-Task Model**: Navigation deliberately hidden during note editing (mimics reMarkable tablet). User must explicitly invoke navigation (double-tap top edge) to switch contexts.
 
 ## Development Commands
@@ -265,6 +271,80 @@ struct CanvasView: UIViewRepresentable {
 // Note: Coordinator retains PKToolPicker to prevent deallocation
 ```
 
+### Network Monitoring Pattern
+
+```swift
+import Network
+
+case .startNetworkMonitoring:
+    return .run { send in
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "NetworkMonitor")
+
+        monitor.pathUpdateHandler = { path in
+            let isOnline = path.status == .satisfied
+            Task { await send(.networkStatusChanged(isOnline)) }
+        }
+
+        monitor.start(queue: queue)
+
+        // Keep alive with proper cancellation
+        try await withTaskCancellationHandler {
+            try await Task.never()
+        } onCancel: {
+            monitor.cancel()
+        }
+    }
+```
+
+### TCA AlertState Error Pattern
+
+```swift
+@CasePathable
+enum ErrorAlertAction: Equatable, Sendable {
+    case retry
+    case dismiss
+}
+
+@ObservableState
+struct State: Equatable {
+    @Presents var errorAlert: AlertState<ErrorAlertAction>?
+}
+
+// In reducer:
+case .errorOccurred(let message):
+    state.errorAlert = AlertState {
+        TextState("Error")
+    } actions: {
+        ButtonState(action: .retry) { TextState("Retry") }
+        ButtonState(role: .cancel, action: .dismiss) { TextState("OK") }
+    } message: {
+        TextState(message)
+    }
+    return .none
+
+case .errorAlert(.presented(.retry)):
+    return .send(.refreshData)
+
+// In reducer body:
+.ifLet(\.$errorAlert, action: \.errorAlert)
+
+// In view:
+.alert($store.scope(state: \.errorAlert, action: \.errorAlert))
+```
+
+### Accessibility Labels Pattern
+
+```swift
+Button { /* action */ } label: {
+    Image(systemName: "xmark")
+}
+.accessibilityLabel("Close note")
+.accessibilityHint(store.hasUnsavedChanges
+    ? "Unsaved changes will prompt confirmation"
+    : "Return to library")
+```
+
 ## Common Pitfalls
 
 **SwiftData @Model in TCA State**: SwiftData models are classes and don't conform to `Equatable`. Never store `@Model` instances directly in TCA State. Use ViewModels (see `Models/ViewModels.swift`) to create lightweight value copies.
@@ -280,6 +360,14 @@ struct CanvasView: UIViewRepresentable {
 **CloudKit Quotas**: PKDrawing files range 1-5 MB per complex page. Free iCloud tier (1 GB storage, 10 GB/month transfer) supports ~200-1000 notes. No quota management needed at MVP.
 
 **Navigation State**: Use `@Presents` for presented features (sheets, navigation destinations). TCA automatically manages presentation lifecycle.
+
+**NWPathMonitor Lifecycle**: Monitor must run as long-lived effect with proper cancellation. Use `withTaskCancellationHandler` + `Task.never()` to keep alive. Call `monitor.cancel()` in onCancel to avoid leaks.
+
+**Alert Action Enums**: Alert action enums for `AlertState<Action>` must be `@CasePathable`, `Equatable`, and `Sendable`. Nested enums (like `SaveErrorAlert`) defined inside parent Action work well.
+
+**State Propagation**: When parent feature (AppFeature) owns state that children (LibraryFeature) need to display, sync explicitly in parent reducer: `state.library.isOnline = isOnline`. Don't duplicate the monitoring effect in children.
+
+**Accessibility Labels**: All interactive elements should have `.accessibilityLabel()`. Use `.accessibilityHint()` for context-dependent behavior (e.g., different hint based on state).
 
 # XC-MCP Optimal Usage Patterns
 
