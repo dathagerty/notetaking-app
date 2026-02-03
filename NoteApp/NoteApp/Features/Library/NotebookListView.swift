@@ -20,6 +20,8 @@ struct NotebookListView: View {
                 ForEach(store.notebooks) { notebook in
                     Label(notebook.name, systemImage: "folder")
                         .tag(notebook.id as UUID?)
+                        .accessibilityLabel("Notebook: \(notebook.name)")
+                        .accessibilityHint("Double tap to view notes in this notebook")
                         .contextMenu {
                             Button("New Notebook") {
                                 store.send(.showCreateNotebook(parentId: notebook.id))

@@ -34,6 +34,8 @@ struct NoteEditorView: View {
                                 .background(.ultraThinMaterial)
                                 .clipShape(Circle())
                         }
+                        .accessibilityLabel("Close note")
+                        .accessibilityHint(store.hasUnsavedChanges ? "Unsaved changes will prompt confirmation" : "Return to library")
 
                         Spacer()
 

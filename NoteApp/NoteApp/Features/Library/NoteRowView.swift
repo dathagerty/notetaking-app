@@ -23,5 +23,8 @@ struct NoteRowView: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title)")
+        .accessibilityHint("Created \(note.createdAt, style: .relative). Double tap to open.")
     }
 }
