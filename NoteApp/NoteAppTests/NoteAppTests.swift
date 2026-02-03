@@ -7,6 +7,7 @@
 
 import Testing
 import ComposableArchitecture
+import Foundation
 @testable import NoteApp
 
 struct AppFeatureTests {
@@ -60,5 +61,38 @@ struct AppFeatureTests {
         )
 
         await store.send(.onAppear)
+    }
+
+    @Test func cloudKitSyncEventSuccess() async {
+        let store = TestStore(
+            initialState: AppFeature.State(
+                focusModeEnabled: false,
+                lastSyncDate: nil,
+                isOnline: true
+            ),
+            reducer: { AppFeature() }
+        )
+
+        let now = Date()
+        await store.send(.cloudKitSyncEvent(.success(now))) {
+            $0.lastSyncDate = now
+            $0.syncError = nil
+        }
+    }
+
+    @Test func cloudKitSyncEventFailure() async {
+        let store = TestStore(
+            initialState: AppFeature.State(
+                focusModeEnabled: false,
+                lastSyncDate: nil,
+                isOnline: true
+            ),
+            reducer: { AppFeature() }
+        )
+
+        let error = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error"])
+        await store.send(.cloudKitSyncEvent(.failure(error))) {
+            $0.syncError = "Test error"
+        }
     }
 }

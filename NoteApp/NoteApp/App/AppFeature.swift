@@ -1,5 +1,6 @@
 import ComposableArchitecture
 import Foundation
+import Network
 
 /// AppFeature - Functional Core
 /// Pure reducer managing app-level state and actions.
@@ -12,6 +13,7 @@ struct AppFeature {
         var focusModeEnabled: Bool = false
         var lastSyncDate: Date?
         var isOnline: Bool = true
+        var syncError: String?
 
         // Phase 3: Library feature
         var library: LibraryFeature.State = .init()
@@ -20,7 +22,9 @@ struct AppFeature {
     enum Action {
         case onAppear
         case focusModeToggled
+        case startNetworkMonitoring
         case networkStatusChanged(Bool)
+        case cloudKitSyncEvent(Result<Date, Error>)
 
         // Phase 3: Library actions
         case library(LibraryFeature.Action)
@@ -34,15 +38,47 @@ struct AppFeature {
         Reduce { state, action in
             switch action {
             case .onAppear:
-                // Initialize app state
-                return .none
+                return .send(.startNetworkMonitoring)
 
             case .focusModeToggled:
                 state.focusModeEnabled.toggle()
                 return .none
 
+            case .startNetworkMonitoring:
+                return .run { send in
+                    let monitor = NWPathMonitor()
+                    let queue = DispatchQueue(label: "NetworkMonitor")
+
+                    monitor.pathUpdateHandler = { path in
+                        let isOnline = path.status == .satisfied
+                        Task {
+                            await send(.networkStatusChanged(isOnline))
+                        }
+                    }
+
+                    monitor.start(queue: queue)
+
+                    // Keep monitor alive with proper cancellation handling
+                    do {
+                        try await withTaskCancellationHandler {
+                            try await Task.never()
+                        } onCancel: {
+                            monitor.cancel()
+                        }
+                    } catch {}
+                }
+
             case .networkStatusChanged(let isOnline):
                 state.isOnline = isOnline
+                return .none
+
+            case .cloudKitSyncEvent(.success(let date)):
+                state.lastSyncDate = date
+                state.syncError = nil
+                return .none
+
+            case .cloudKitSyncEvent(.failure(let error)):
+                state.syncError = error.localizedDescription
                 return .none
 
             case .library:
