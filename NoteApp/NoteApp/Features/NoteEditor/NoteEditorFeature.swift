@@ -16,7 +16,10 @@ struct NoteEditorFeature {
         var isSaving: Bool = false
         var navigationVisible: Bool = true
         var detectedTags: Set<String> = []
+        var saveAttempts: Int = 0
+        var saveError: String?
         @Presents var exitConfirmation: ConfirmationDialogState<ExitConfirmation>?
+        @Presents var saveErrorAlert: AlertState<Action.SaveErrorAlert>?
     }
 
     @CasePathable
@@ -42,11 +45,17 @@ struct NoteEditorFeature {
         case tagsDetected(Set<String>)
         case closeButtonTapped
         case exitConfirmation(PresentationAction<ExitConfirmation>)
+        case saveErrorAlert(PresentationAction<SaveErrorAlert>)
         case hideNavigationAfterDelay
         case showNavigationTemporarily
         case hideNavigation
         case gestureDetected(GestureType)
         case delegate(Delegate)
+
+        enum SaveErrorAlert: Equatable, Sendable {
+            case retry
+            case discard
+        }
     }
 
     enum GestureType {
@@ -155,16 +164,44 @@ struct NoteEditorFeature {
             case .drawingSaved:
                 state.hasUnsavedChanges = false
                 state.isSaving = false
+                state.saveAttempts = 0  // Reset attempts on success
+                state.saveError = nil
                 return .cancel(id: "NoteEditorRetry")
 
-            case .saveFailed:
+            case .saveFailed(let error):
                 state.isSaving = false
-                // Retry save automatically after 5 seconds
-                return .run { send in
-                    try await clock.sleep(for: .seconds(5))
-                    await send(.saveDrawing)
+
+                // Auto-retry with exponential backoff
+                let attempt = state.saveAttempts
+                let delay = min(pow(2.0, Double(attempt)), 60.0)  // Max 60 seconds
+
+                state.saveAttempts += 1
+
+                if state.saveAttempts < 3 {
+                    // Retry automatically
+                    return .run { send in
+                        try await clock.sleep(for: .seconds(delay))
+                        await send(.saveDrawing)
+                    }
+                    .cancellable(id: "NoteEditorRetry", cancelInFlight: true)
+                } else {
+                    // Max retries reached, show alert
+                    let errorMessage = "Failed to save after \(attempt) attempts: \(error)"
+                    state.saveError = errorMessage
+                    state.saveErrorAlert = AlertState {
+                        TextState("Save Failed")
+                    } actions: {
+                        ButtonState(action: .retry) {
+                            TextState("Retry")
+                        }
+                        ButtonState(role: .destructive, action: .discard) {
+                            TextState("Discard Changes")
+                        }
+                    } message: {
+                        TextState(errorMessage)
+                    }
+                    return .none
                 }
-                .cancellable(id: "NoteEditorRetry", cancelInFlight: true)
 
             case .closeButtonTapped:
                 if state.hasUnsavedChanges {
@@ -192,6 +229,20 @@ struct NoteEditorFeature {
                 return .none
 
             case .exitConfirmation(.dismiss):
+                return .none
+
+            case .saveErrorAlert(.presented(.retry)):
+                state.saveAttempts = 0  // Reset attempts to retry from beginning
+                state.saveError = nil
+                return .send(.saveDrawing)
+
+            case .saveErrorAlert(.presented(.discard)):
+                state.hasUnsavedChanges = false
+                state.saveAttempts = 0
+                state.saveError = nil
+                return .none
+
+            case .saveErrorAlert(.dismiss):
                 return .none
 
             case .hideNavigationAfterDelay:
@@ -232,5 +283,6 @@ struct NoteEditorFeature {
             }
         }
         .ifLet(\.$exitConfirmation, action: \.exitConfirmation)
+        .ifLet(\.$saveErrorAlert, action: \.saveErrorAlert)
     }
 }

@@ -97,6 +97,12 @@ struct NoteEditorView: View {
                 action: \.exitConfirmation
             )
         )
+        .alert(
+            $store.scope(
+                state: \.saveErrorAlert,
+                action: \.saveErrorAlert
+            )
+        )
         .interactiveDismissDisabled(store.hasUnsavedChanges)
     }
 }
