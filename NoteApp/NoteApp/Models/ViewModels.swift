@@ -1,0 +1,58 @@
+import Foundation
+
+/// Lightweight value type for displaying notebooks in lists
+/// Required because SwiftData @Model classes don't conform to Equatable
+struct NotebookViewModel: Equatable, Identifiable {
+    let id: UUID
+    let name: String
+    let createdAt: Date
+    let updatedAt: Date
+    let childCount: Int
+    let noteCount: Int
+
+    nonisolated init(from notebook: Notebook) {
+        self.id = notebook.id
+        self.name = notebook.name
+        self.createdAt = notebook.createdAt
+        self.updatedAt = notebook.updatedAt
+        // Note: Using .count on optional arrays is safe here because we only access during
+        // initialization. The view models are lightweight value types used only for display
+        // and don't trigger query evaluation like @Query would in iOS 18+.
+        self.childCount = notebook.children?.count ?? 0
+        self.noteCount = notebook.notes?.count ?? 0
+    }
+}
+
+/// Lightweight value type for displaying notes in lists
+/// Required because SwiftData @Model classes don't conform to Equatable
+struct NoteViewModel: Equatable, Identifiable {
+    let id: UUID
+    let title: String
+    let content: String
+    let createdAt: Date
+    let updatedAt: Date
+    let hasDrawing: Bool
+    let tagNames: [String]
+
+    nonisolated init(from note: Note) {
+        self.id = note.id
+        self.title = note.title
+        self.content = note.content
+        self.createdAt = note.createdAt
+        self.updatedAt = note.updatedAt
+        self.hasDrawing = note.drawingData != nil
+        self.tagNames = note.tags?.map { $0.name } ?? []
+    }
+}
+
+/// Lightweight value type for displaying tags
+/// Hashable conformance required for Set<TagViewModel> in LibraryFeature.State
+struct TagViewModel: Equatable, Identifiable, Hashable {
+    let id: UUID
+    let name: String
+
+    nonisolated init(from tag: Tag) {
+        self.id = tag.id
+        self.name = tag.name
+    }
+}

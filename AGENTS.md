@@ -1,0 +1,431 @@
+# AGENTS.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Repository Structure
+
+This is a **git worktree-based development repository** for iPad/iOS projects. The main branch contains only design documentation; actual implementation happens in worktrees:
+
+- `docs/design-plans/` — Design documents describing features and architecture
+- `.worktrees/` — Git worktrees containing actual implementation code (one per feature branch)
+
+## Working with Worktrees
+
+To start implementing a design plan:
+
+```bash
+# Create worktree for a design plan
+git worktree add .worktrees/<feature-name> -b <feature-name>
+cd .worktrees/<feature-name>
+
+# Work here - this is where Xcode projects live
+```
+
+To list existing worktrees:
+```bash
+git worktree list
+```
+
+To remove a completed worktree:
+```bash
+git worktree remove .worktrees/<feature-name>
+```
+
+
+## Architecture Overview
+
+**Framework**: The Composable Architecture (TCA) — Redux-inspired state management with unidirectional data flow (State → Action → Reducer → Effect → State).
+
+**Persistence**: SwiftData with automatic CloudKit sync via entitlements (iCloud container + CloudKit capability). Local-first architecture where all writes succeed immediately to local storage, cloud sync happens asynchronously in background. Note: SwiftData handles CloudKit automatically when entitlements are present—no explicit `NSPersistentCloudKitContainer` needed.
+
+**Core Pattern**: FCIS (Functional Core, Imperative Shell):
+- **Functional Core**: TCA Reducers are pure functions `(State, Action) -> (State, Effect)` containing all business logic
+- **Imperative Shell**: Effects handle side effects (I/O, network, timers), SwiftUI views, UIKit bridges
+
+### Feature Structure
+
+```
+NoteAppApp.swift           — App entry point with SwiftData config (root level)
+
+App/
+├── AppFeature.swift       — Root TCA feature (app-level state)
+└── AppView.swift          — Root SwiftUI view
+
+Features/
+├── Library/               — Notebook/note browsing (NavigationSplitView)
+│   ├── LibraryFeature.swift
+│   ├── LibraryView.swift
+│   ├── NotebookListView.swift
+│   ├── NoteListView.swift
+│   └── NoteRowView.swift
+└── NoteEditor/            — Full-screen PencilKit canvas
+    ├── NoteEditorFeature.swift
+    ├── NoteEditorView.swift
+    ├── CanvasView.swift           (UIViewRepresentable for PKCanvasView)
+    └── CanvasCoordinator.swift
+
+Models/                    — SwiftData @Model entities
+├── Notebook.swift         — Hierarchical tree (parent/children)
+├── Note.swift             — Drawing data + metadata
+├── Tag.swift              — Many-to-many with Notes
+└── ViewModels.swift       — Lightweight Equatable value types for TCA state
+
+Repositories/              — Abstraction over SwiftData queries
+├── NoteRepository.swift
+├── NotebookRepository.swift
+└── TagRepository.swift
+
+Dependencies/
+└── RepositoryDependencies.swift — TCA dependency injection setup
+```
+
+### Data Flow Pattern
+
+1. User interaction → Action dispatched to Store
+2. Reducer (pure function) → New State + Effects
+3. Effects → Run side effects (async operations)
+4. Effect completion → New Action dispatched
+5. State update → SwiftUI views re-render
+
+Example:
+```swift
+// Drawing update flow
+User draws → .drawingChanged(PKDrawing)
+→ Reducer: state.drawing = newDrawing, state.hasUnsavedChanges = true
+→ Effect: Debounced save (2 seconds)
+→ Repository serializes PKDrawing.dataRepresentation()
+→ SwiftData persists → CloudKit syncs
+→ .drawingSaved → Reducer: state.hasUnsavedChanges = false
+```
+
+### Key Architectural Decisions
+
+**Repository Pattern**: SwiftData queries wrapped in protocol-based repositories. Keeps reducers pure (no direct ModelContext access) and enables testing with mock repositories.
+
+**TCA Feature Composition**: `LibraryFeature` contains `NoteEditorFeature` as optional child state (`@Presents var noteEditor: NoteEditorFeature.State?`). Navigation handled via presentation actions.
+
+**Dependency Injection**: TCA's `@Dependency` system for repositories and services. `ModelContext` provided via dependency values, repositories created lazily from ModelContext.
+
+**iOS 18 Workaround**: SwiftData relationship management differs between iOS 17 and 18. When creating notes, append from parent side (`notebook.notes?.append(note)`) on iOS 18+ instead of setting `note.notebook`.
+
+**ViewModel Pattern**: SwiftData `@Model` classes don't conform to `Equatable`, so TCA state uses lightweight value types (`NotebookViewModel`, `NoteViewModel`, `TagViewModel`) that copy essential fields from models. This enables TCA's state equality checks while avoiding direct model references in state.
+
+**Auto-save Strategy**: Drawing changes debounced with 2-second delay using TCA's cancellable effects. Prevents excessive saves during active drawing while ensuring data persistence.
+
+**Save Failure Recovery**: Exponential backoff retry (2^n seconds, max 60s) for transient save failures. After 3 auto-retries, presents user alert with Retry/Discard options. Uses `saveAttempts` counter and `saveErrorAlert: AlertState<SaveErrorAlert>?` in state.
+
+**Network Monitoring**: `NWPathMonitor` runs as long-lived effect from `AppFeature.onAppear`. Status propagated to child features via parent-to-child state sync (`state.library.isOnline = isOnline`). Enables offline-aware UI.
+
+**Error Alert Pattern**: TCA's `AlertState<Action>` with `@CasePathable` action enum for structured error handling. Pattern: error occurs -> set `errorAlert` state -> `.ifLet(\.$errorAlert, action: \.errorAlert)` -> handle `retry`/`dismiss` actions.
+
+**Strict Single-Task Model**: Navigation deliberately hidden during note editing (mimics reMarkable tablet). User must explicitly invoke navigation (double-tap top edge) to switch contexts.
+
+## Development Commands
+
+### Building and Running
+
+```bash
+cd .worktrees/remarkable-ipad-note-app/NoteApp
+
+# Build
+xcodebuild -scheme NoteApp -configuration Debug build
+
+# Run tests (use any available iPad simulator)
+xcodebuild test -scheme NoteApp -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
+
+# Or use Xcode UI
+open NoteApp.xcodeproj
+```
+
+**Deployment Target**: iOS 17+ (requires SwiftData and TCA 1.x)
+**Device**: iPad only (uses NavigationSplitView, optimized for Apple Pencil)
+
+### Running Tests
+
+The project uses **both** Swift Testing and XCTest:
+- TCA reducer tests use Swift Testing (`@Test` attribute)
+- Repository tests use XCTest (`XCTestCase`)
+
+```bash
+# All tests
+xcodebuild test -scheme NoteApp
+
+# Specific test file
+xcodebuild test -scheme NoteApp -only-testing:NoteAppTests/AppFeatureTests
+
+# TCA tests use TestStore for reducer verification
+```
+
+**Test Structure**:
+- `NoteAppTests/NoteAppTests.swift` — TCA reducer tests (Swift Testing, `@Test`)
+- `NoteAppTests/LibraryFeatureTests.swift` — Library feature tests (Swift Testing)
+- `NoteAppTests/RepositoryTests.swift` — Repository layer tests (XCTest, in-memory SwiftData)
+
+### Dependencies
+
+Managed via Swift Package Manager (Xcode integration):
+
+- `swift-composable-architecture` @ 1.23.1 — TCA framework
+- Transitive dependencies auto-resolved (swift-dependencies, swift-case-paths, etc.)
+
+To update:
+```bash
+# In Xcode: File > Packages > Update to Latest Package Versions
+# Or via CLI:
+xcodebuild -resolvePackageDependencies
+```
+
+## Testing CloudKit Sync
+
+CloudKit sync requires:
+1. **Entitlements configured** (iCloud container + CloudKit capability)
+2. **Physical devices** (iOS Simulators cannot sign into iCloud for CloudKit testing)
+3. **Two devices signed into same iCloud account**
+4. **Network connectivity**
+
+Verify sync:
+```swift
+// Create data on Device A
+let notebook = Notebook(name: "Test")
+modelContext.insert(notebook)
+try modelContext.save()
+
+// Wait 30-60 seconds for CloudKit background sync
+// Check Device B — should see "Test" notebook appear
+```
+
+**Conflict Resolution**: SwiftData with CloudKit uses last-write-wins by default. Acceptable for single-user note-taking; conflicts are rare.
+
+## Code Patterns
+
+### TCA Reducer Pattern
+
+```swift
+@Reducer
+struct MyFeature {
+    @ObservableState
+    struct State: Equatable { /* ... */ }
+
+    enum Action { /* ... */ }
+
+    @Dependency(\.myRepository) var repo
+
+    var body: some Reducer<State, Action> {
+        Reduce { state, action in
+            switch action {
+            case .someAction:
+                // Pure state transformations here
+                return .run { send in
+                    // Side effects in .run
+                    let result = try await repo.fetchData()
+                    await send(.dataLoaded(result))
+                }
+            }
+        }
+    }
+}
+```
+
+### Repository Interface Pattern
+
+```swift
+protocol MyRepository: Sendable {
+    func fetchData() async throws -> [Data]
+}
+
+actor SwiftDataMyRepository: MyRepository {
+    private let modelContext: ModelContext
+
+    func fetchData() async throws -> [Data] {
+        let descriptor = FetchDescriptor<MyModel>()
+        return try modelContext.fetch(descriptor)
+    }
+}
+```
+
+### PencilKit Integration (UIKit → SwiftUI Bridge)
+
+```swift
+struct CanvasView: UIViewRepresentable {
+    let drawing: PKDrawing  // Passed from TCA state (not @Binding)
+    let onDrawingChanged: (PKDrawing) -> Void
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        let canvasView = PKCanvasView()
+        canvasView.drawing = drawing
+        canvasView.drawingPolicy = .anyInput  // Allow Pencil and finger
+        canvasView.delegate = context.coordinator
+        return canvasView
+    }
+
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        if uiView.drawing != drawing {
+            uiView.drawing = drawing  // Sync external changes
+        }
+    }
+
+    func makeCoordinator() -> CanvasCoordinator {
+        CanvasCoordinator(onDrawingChanged: onDrawingChanged)
+    }
+}
+// Note: Coordinator retains PKToolPicker to prevent deallocation
+```
+
+### Network Monitoring Pattern
+
+```swift
+import Network
+
+case .startNetworkMonitoring:
+    return .run { send in
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "NetworkMonitor")
+
+        monitor.pathUpdateHandler = { path in
+            let isOnline = path.status == .satisfied
+            Task { await send(.networkStatusChanged(isOnline)) }
+        }
+
+        monitor.start(queue: queue)
+
+        // Keep alive with proper cancellation
+        try await withTaskCancellationHandler {
+            try await Task.never()
+        } onCancel: {
+            monitor.cancel()
+        }
+    }
+```
+
+### TCA AlertState Error Pattern
+
+```swift
+@CasePathable
+enum ErrorAlertAction: Equatable, Sendable {
+    case retry
+    case dismiss
+}
+
+@ObservableState
+struct State: Equatable {
+    @Presents var errorAlert: AlertState<ErrorAlertAction>?
+}
+
+// In reducer:
+case .errorOccurred(let message):
+    state.errorAlert = AlertState {
+        TextState("Error")
+    } actions: {
+        ButtonState(action: .retry) { TextState("Retry") }
+        ButtonState(role: .cancel, action: .dismiss) { TextState("OK") }
+    } message: {
+        TextState(message)
+    }
+    return .none
+
+case .errorAlert(.presented(.retry)):
+    return .send(.refreshData)
+
+// In reducer body:
+.ifLet(\.$errorAlert, action: \.errorAlert)
+
+// In view:
+.alert($store.scope(state: \.errorAlert, action: \.errorAlert))
+```
+
+### Accessibility Labels Pattern
+
+```swift
+Button { /* action */ } label: {
+    Image(systemName: "xmark")
+}
+.accessibilityLabel("Close note")
+.accessibilityHint(store.hasUnsavedChanges
+    ? "Unsaved changes will prompt confirmation"
+    : "Return to library")
+```
+
+## Common Pitfalls
+
+**SwiftData @Model in TCA State**: SwiftData models are classes and don't conform to `Equatable`. Never store `@Model` instances directly in TCA State. Use ViewModels (see `Models/ViewModels.swift`) to create lightweight value copies.
+
+**SwiftData Relationships**: Always verify iOS version when setting relationships. iOS 18 requires explicit parent-side appends for inverse relationships.
+
+**TCA Effect Cancellation**: Use `.cancellable(id:, cancelInFlight: true)` for debounced effects to prevent stale effect completions from racing.
+
+**PKDrawing Serialization**: Use `drawing.dataRepresentation()` to serialize PKDrawing to Data for SwiftData storage. Deserialize with `try PKDrawing(data:)`.
+
+**Testing TCA**: TestStore requires exhaustive assertions. Must assert all state changes from an action, including child feature state.
+
+**CloudKit Quotas**: PKDrawing files range 1-5 MB per complex page. Free iCloud tier (1 GB storage, 10 GB/month transfer) supports ~200-1000 notes. No quota management needed at MVP.
+
+**Navigation State**: Use `@Presents` for presented features (sheets, navigation destinations). TCA automatically manages presentation lifecycle.
+
+**NWPathMonitor Lifecycle**: Monitor must run as long-lived effect with proper cancellation. Use `withTaskCancellationHandler` + `Task.never()` to keep alive. Call `monitor.cancel()` in onCancel to avoid leaks.
+
+**Alert Action Enums**: Alert action enums for `AlertState<Action>` must be `@CasePathable`, `Equatable`, and `Sendable`. Nested enums (like `SaveErrorAlert`) defined inside parent Action work well.
+
+**State Propagation**: When parent feature (AppFeature) owns state that children (LibraryFeature) need to display, sync explicitly in parent reducer: `state.library.isOnline = isOnline`. Don't duplicate the monitoring effect in children.
+
+**Accessibility Labels**: All interactive elements should have `.accessibilityLabel()`. Use `.accessibilityHint()` for context-dependent behavior (e.g., different hint based on state).
+
+# XC-MCP Optimal Usage Patterns
+
+This project uses XC-MCP for iOS development automation. Follow these patterns for maximum efficiency.
+
+## Tool Discovery
+
+1. **Browse categories**: `rtfm({ categoryName: "build" })` — See all build-related tools
+2. **Get tool docs**: `rtfm({ toolName: "xcodebuild-build" })` — Comprehensive documentation
+3. **Execute**: Use discovered parameters and operations
+
+## Accessibility-First Automation (MANDATORY)
+
+**ALWAYS assess accessibility quality before taking screenshots:**
+
+1. **Check quality**: `accessibility-quality-check({ screenContext: "LoginScreen" })`
+   - Returns: `rich` | `moderate` | `minimal`
+
+2. **Decision branch**:
+   - IF `rich` or `moderate`: Use `idb-ui-find-element` + `idb-ui-tap` (faster, cheaper)
+   - IF `minimal`: Fall back to `screenshot` (last resort)
+
+3. **Why this matters**:
+   - Accessibility: 50 tokens, 120ms per query
+   - Screenshots: 170 tokens, 2000ms per capture
+   - **3-4x cheaper, 16x faster when accessibility sufficient**
+   - **Promotes inclusive app development**
+
+## Progressive Disclosure
+
+- Build/test tools return `buildId` or cache IDs
+- Use `xcodebuild-get-details` or `simctl-get-details` to drill down
+- **Never request full logs upfront** — get summaries first
+
+## Best Practices
+
+- **Let UDID auto-detect** — Don't prompt user for simulator UDIDs
+- **Use semantic context** — Include `screenContext`, `appName`, `screenName` parameters
+- **Prefer accessibility over screenshots** — Better for efficiency AND app quality
+- **Use operation enums** — `simctl-device({ operation: "boot" })` instead of separate tools
+
+## Example: Optimal Login Flow
+
+\`\`\`typescript
+// 1. Quality check (30 tokens, 80ms)
+accessibility-quality-check({ screenContext: "LoginScreen" })
+
+// 2. IF rich: Semantic search (40 tokens, 120ms)
+idb-ui-find-element({ query: "email" })
+idb-ui-tap({ x: 200, y: 150 })
+idb-ui-input({ operation: "text", text: "user@example.com" })
+
+idb-ui-find-element({ query: "login" })
+idb-ui-tap({ x: 200, y: 400 })
+
+// 3. Verify with screenshot only at end (170 tokens, 2000ms)
+screenshot({ screenName: "HomeScreen", state: "LoggedIn" })
+
+// Total: ~280 tokens, ~2400ms
+// vs Screenshot-first: ~510 tokens, ~6000ms (2.5x slower, 1.8x more expensive)
+\`\`\`

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "xc-mcp": {
+      "type": "stdio",
+      "command": "xc-mcp",
+      "args": [
+        "--mini"
+      ],
+      "env": {}
+    }
+  }
+}

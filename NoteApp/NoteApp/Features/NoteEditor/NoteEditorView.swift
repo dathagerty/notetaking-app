@@ -1,0 +1,143 @@
+import SwiftUI
+import ComposableArchitecture
+import PencilKit
+
+// FCIS: Imperative Shell (view layer with gesture handling for navigation visibility) displaying note editor with canvas and controls
+struct NoteEditorView: View {
+    @Bindable var store: StoreOf<NoteEditorFeature>
+
+    var body: some View {
+        ZStack {
+            // Full-screen canvas
+            CanvasView(
+                drawing: store.drawing,
+                onDrawingChanged: { newDrawing in
+                    store.send(.drawingChanged(newDrawing))
+                    store.send(.gestureDetected(.drawingStarted))
+                }
+            )
+            .ignoresSafeArea()
+            .persistentSystemOverlays(.hidden) // Hide home indicator
+
+            // Auto-hiding navigation overlay
+            if store.navigationVisible {
+                VStack {
+                    HStack {
+                        Button {
+                            store.send(.closeButtonTapped)
+                        } label: {
+                            Label("Close", systemImage: "xmark.circle.fill")
+                                .labelStyle(.iconOnly)
+                                .font(.title2)
+                                .foregroundColor(.primary)
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                        }
+                        .accessibilityLabel("Close note")
+                        .accessibilityHint(store.hasUnsavedChanges ? "Unsaved changes will prompt confirmation" : "Return to library")
+
+                        Spacer()
+
+                        if store.isSaving {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Saving...")
+                                    .font(.caption)
+                            }
+                            .padding(8)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
+                        }
+                    }
+                    .padding()
+
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // Tag badge overlay showing detected hashtags
+            if !store.detectedTags.isEmpty {
+                VStack {
+                    Spacer()
+
+                    HStack {
+                        Spacer()
+
+                        TagBadgeOverlay(tags: Array(store.detectedTags))
+                            .padding()
+                    }
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            // Invisible double-tap detection zone at top edge
+            VStack {
+                Color.clear
+                    .frame(height: 60)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        TapGesture(count: 2)
+                            .onEnded {
+                                store.send(.gestureDetected(.topEdgeDoubleTap))
+                            }
+                    )
+
+                Spacer()
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: store.navigationVisible)
+        .onAppear {
+            store.send(.onAppear)
+            store.send(.hideNavigationAfterDelay)
+        }
+        .confirmationDialog(
+            $store.scope(
+                state: \.exitConfirmation,
+                action: \.exitConfirmation
+            )
+        )
+        .alert(
+            $store.scope(
+                state: \.saveErrorAlert,
+                action: \.saveErrorAlert
+            )
+        )
+        .interactiveDismissDisabled(store.hasUnsavedChanges)
+    }
+}
+
+// Tag badge overlay showing detected hashtags
+struct TagBadgeOverlay: View {
+    let tags: [String]
+
+    var body: some View {
+        if !tags.isEmpty {
+            VStack(alignment: .trailing, spacing: 4) {
+                ForEach(tags, id: \.self) { tag in
+                    Text("#\(tag)")
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    NoteEditorView(
+        store: Store(
+            initialState: NoteEditorFeature.State(
+                noteId: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                noteTitle: "Test Note",
+                drawing: PKDrawing()
+            ),
+            reducer: { NoteEditorFeature() }
+        )
+    )
+}
