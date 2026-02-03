@@ -81,6 +81,9 @@ struct LibraryView: View {
                     }
                 }
             }
+            .alert(
+                $store.scope(state: \.errorAlert, action: \.errorAlert)
+            )
     }
 
     private var deleteDialogBinding: Binding<Bool> {

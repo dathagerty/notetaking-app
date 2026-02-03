@@ -632,4 +632,71 @@ struct LibraryFeatureTests {
             state.exportFeature = nil
         }
     }
+
+    @Test func errorOccurred_presentsErrorAlert() async {
+        let store = TestStore(
+            initialState: LibraryFeature.State(),
+            reducer: { LibraryFeature() }
+        )
+
+        let errorMessage = "Network connection failed"
+        await store.send(.errorOccurred(errorMessage)) { state in
+            state.errorAlert != nil
+            state.isLoading = false
+        }
+    }
+
+    @Test func errorAlert_retryTriggersRefreshData() async {
+        let notebook = Notebook(name: "Test")
+        let mockNotebookRepo = MockNotebookRepository(mockNotebooks: [notebook])
+        let mockNoteRepo = MockNoteRepository()
+        let mockTagRepo = MockTagRepository()
+
+        let store = TestStore(
+            initialState: LibraryFeature.State(
+                errorAlert: AlertState(
+                    title: { TextState("Error") },
+                    actions: {
+                        ButtonState(action: .retry) {
+                            TextState("Retry")
+                        }
+                        ButtonState(role: .cancel, action: .dismiss) {
+                            TextState("OK")
+                        }
+                    },
+                    message: { TextState("Test error") }
+                )
+            ),
+            reducer: { LibraryFeature() }
+        ) {
+            $0.notebookRepository = mockNotebookRepo
+            $0.noteRepository = mockNoteRepo
+            $0.tagRepository = mockTagRepo
+        }
+
+        await store.send(.errorAlert(.presented(.retry)))
+        await store.receive(\.refreshData)
+        await store.receive(\.notebooksLoaded)
+    }
+
+    @Test func errorAlert_dismissClosesAlert() async {
+        let store = TestStore(
+            initialState: LibraryFeature.State(
+                errorAlert: AlertState(
+                    title: { TextState("Error") },
+                    actions: {
+                        ButtonState(role: .cancel, action: .dismiss) {
+                            TextState("OK")
+                        }
+                    },
+                    message: { TextState("Test error") }
+                )
+            ),
+            reducer: { LibraryFeature() }
+        )
+
+        await store.send(.errorAlert(.presented(.dismiss))) { state in
+            state.errorAlert = nil
+        }
+    }
 }

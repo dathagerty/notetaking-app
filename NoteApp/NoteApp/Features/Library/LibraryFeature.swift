@@ -37,6 +37,12 @@ enum CreateNoteSheetAction: Equatable, Sendable {
     case noteTitleChanged(String)
 }
 
+@CasePathable
+enum ErrorAlertAction: Equatable, Sendable {
+    case retry
+    case dismiss
+}
+
 // FCIS: Functional Core (TCA state management) for notebooks and notes navigation
 @Reducer
 struct LibraryFeature {
@@ -57,6 +63,7 @@ struct LibraryFeature {
         var createNotebookSheet: CreateNotebookSheetState?
         var createNoteSheet: CreateNoteSheetState?
         @Presents var deleteConfirmation: ConfirmationDialogState<LibraryDeleteAlert>?
+        @Presents var errorAlert: AlertState<ErrorAlertAction>?
 
         // Note editor state
         @Presents var noteEditor: NoteEditorFeature.State?
@@ -111,6 +118,9 @@ struct LibraryFeature {
         case showDeleteConfirmation(item: DeletableItem)
         case deleteConfirmation(PresentationAction<LibraryDeleteAlert>)
         case deleteCompleted
+
+        // Error handling
+        case errorAlert(PresentationAction<ErrorAlertAction>)
 
         // Note editor
         case noteEditor(PresentationAction<NoteEditorFeature.Action>)
@@ -498,8 +508,25 @@ struct LibraryFeature {
                 return .none
 
             case .errorOccurred(let message):
-                state.errorMessage = message
+                state.errorAlert = AlertState {
+                    TextState("Error")
+                } actions: {
+                    ButtonState(action: .retry) {
+                        TextState("Retry")
+                    }
+                    ButtonState(role: .cancel, action: .dismiss) {
+                        TextState("OK")
+                    }
+                } message: {
+                    TextState(message)
+                }
                 state.isLoading = false
+                return .none
+
+            case .errorAlert(.presented(.retry)):
+                return .send(.refreshData)
+
+            case .errorAlert:
                 return .none
 
             case .noteEditor(.presented(.delegate(.closeRequested))):
@@ -512,6 +539,7 @@ struct LibraryFeature {
             }
         }
         .ifLet(\.$deleteConfirmation, action: \.deleteConfirmation)
+        .ifLet(\.$errorAlert, action: \.errorAlert)
         .ifLet(\.$noteEditor, action: \.noteEditor) {
             NoteEditorFeature()
         }
