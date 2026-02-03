@@ -11,7 +11,9 @@ enum NoteRepositoryKey: DependencyKey {
     }
 
     static var testValue: any NoteRepository {
-        fatalError("NoteRepository not implemented for tests")
+        // Use in-memory SwiftData context from ModelContextKey.testValue
+        @Dependency(\.modelContext) var modelContext
+        return SwiftDataNoteRepository(modelContext: modelContext)
     }
 }
 
@@ -22,7 +24,9 @@ enum NotebookRepositoryKey: DependencyKey {
     }
 
     static var testValue: any NotebookRepository {
-        fatalError("NotebookRepository not implemented for tests")
+        // Use in-memory SwiftData context from ModelContextKey.testValue
+        @Dependency(\.modelContext) var modelContext
+        return SwiftDataNotebookRepository(modelContext: modelContext)
     }
 }
 
@@ -33,7 +37,9 @@ enum TagRepositoryKey: DependencyKey {
     }
 
     static var testValue: any TagRepository {
-        fatalError("TagRepository not implemented for tests")
+        // Use in-memory SwiftData context from ModelContextKey.testValue
+        @Dependency(\.modelContext) var modelContext
+        return SwiftDataTagRepository(modelContext: modelContext)
     }
 }
 
