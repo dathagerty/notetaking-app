@@ -10,6 +10,39 @@ struct LibraryView: View {
             .onAppear {
                 store.send(.onAppear)
             }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        store.send(.showCreateNote)
+                    } label: {
+                        Label("New Note", systemImage: "note.text.badge.plus")
+                    }
+                }
+
+                ToolbarItem(placement: .status) {
+                    HStack(spacing: 4) {
+                        // Network status
+                        Image(systemName: store.isOnline ? "wifi" : "wifi.slash")
+                            .foregroundColor(store.isOnline ? .green : .orange)
+
+                        // Sync status
+                        if let lastSync = store.lastSyncDate {
+                            Text("Synced \(lastSync, style: .relative)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        if let syncError = store.syncError {
+                            Button {
+                                // Show error details
+                            } label: {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                }
+            }
             .sheet(item: createNotebookSheetBinding) { sheetState in
                 CreateNotebookSheetView(
                     state: sheetState,

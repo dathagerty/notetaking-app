@@ -70,15 +70,19 @@ struct AppFeature {
 
             case .networkStatusChanged(let isOnline):
                 state.isOnline = isOnline
+                state.library.isOnline = isOnline
                 return .none
 
             case .cloudKitSyncEvent(.success(let date)):
                 state.lastSyncDate = date
                 state.syncError = nil
+                state.library.lastSyncDate = date
+                state.library.syncError = nil
                 return .none
 
             case .cloudKitSyncEvent(.failure(let error)):
                 state.syncError = error.localizedDescription
+                state.library.syncError = error.localizedDescription
                 return .none
 
             case .library:

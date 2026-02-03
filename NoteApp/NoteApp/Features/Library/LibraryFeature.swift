@@ -73,6 +73,11 @@ struct LibraryFeature {
         // Export feature
         @Presents var exportFeature: ExportFeature.State?
 
+        // Network and sync status (from AppFeature)
+        var isOnline: Bool = true
+        var lastSyncDate: Date?
+        var syncError: String?
+
         // Computed properties
         var selectedNotebook: NotebookViewModel? {
             notebooks.first { $0.id == selectedNotebookId }
